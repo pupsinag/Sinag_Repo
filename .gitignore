@@ -27,6 +27,3 @@ Thumbs.db
 .idea
 *.swp
 *.swo
-
-# Build output (if rebuilding)
-dist/
