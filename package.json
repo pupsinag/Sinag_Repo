@@ -6,7 +6,8 @@
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon app.js",
+    "build": "echo 'Frontend already pre-built and included'"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
