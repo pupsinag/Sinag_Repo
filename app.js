@@ -167,20 +167,29 @@ const internDailyLogRoutes = loadRoute(
 if (internDailyLogRoutes) app.use('/api', internDailyLogRoutes);
 
 // =========================
-// HEALTH CHECK
+// SERVE FRONTEND (PRODUCTION)
 // =========================
-app.get('/', (req, res) => {
-  res.json({ message: 'pup-sinag backend running' });
-});
+const publicPath = path.join(__dirname, 'public/dist');
+console.log(`📁 Checking frontend at: ${publicPath}`);
 
-// =========================
-// 404 NOT FOUND
-// =========================
-app.use((req, res) => {
-  res.status(404).json({
-    message: 'Route not found',
-    path: req.originalUrl,
-  });
+// Serve static files from the built frontend
+app.use(express.static(publicPath));
+
+// ✅ SPA Fallback - Serve index.html for all non-API routes
+app.get('/*', (req, res) => {
+  // Don't redirect API calls
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ message: 'API route not found' });
+  }
+
+  // Serve index.html for React Router
+  const indexPath = path.join(publicPath, 'index.html');
+  if (indexPath) {
+    return res.sendFile(indexPath);
+  }
+
+  // Fallback health check
+  res.json({ message: 'pup-sinag backend running' });
 });
 
 // =========================
