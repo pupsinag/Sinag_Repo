@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const User = require('../models/user');
+const { User } = require('../models');
 const sendCredentialsEmail = require('../utils/sendCredentialsEmail');
 
 const registerUser = async (req, res) => {

@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcryptjs');
-const User = require('../models/user');
+const { User } = require('../models');
 
 /* =========================
    SEND RESET CODE
@@ -14,7 +14,18 @@ const sendResetCode = async (req, res) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    const user = await User.findOne({ where: { email } });
+    // Find user in database
+    let user;
+    try {
+      user = await User.findOne({ where: { email } });
+    } catch (dbErr) {
+      console.error('DATABASE ERROR (Finding user):', dbErr.message);
+      return res.status(500).json({ 
+        message: 'Database error', 
+        error: dbErr.message 
+      });
+    }
+
     if (!user) {
       return res.json({ message: 'If the email exists, a code has been sent' });
     }
@@ -23,27 +34,79 @@ const sendResetCode = async (req, res) => {
 
     user.resetCode = code;
     user.resetCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
+    
+    // Save reset code to database
+    try {
+      await user.save();
+      console.log(`✅ Reset code saved for ${email}`);
+    } catch (saveErr) {
+      console.error('DATABASE ERROR (Saving reset code):', saveErr.message);
+      return res.status(500).json({ 
+        message: 'Failed to save reset code', 
+        error: saveErr.message 
+      });
+    }
 
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
+    // Check if email credentials are configured
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error('SEND CODE ERROR: Email credentials not configured');
+      console.error('EMAIL_USER:', process.env.EMAIL_USER);
+      console.error('EMAIL_PASS:', process.env.EMAIL_PASS ? '***HIDDEN***' : 'NOT SET');
+      return res.status(500).json({ message: 'Email service not configured' });
+    }
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'PUP SINAG Password Reset Code',
-      text: `Your verification code is: ${code}`,
-    });
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+      });
 
-    return res.json({ message: 'Verification code sent' });
+      console.log('📧 Nodemailer transporter created successfully');
+
+      // Verify the transporter connection
+      const verified = await transporter.verify();
+      if (!verified) {
+        console.error('SEND CODE ERROR: Nodemailer verification failed - credentials may be invalid');
+        return res.status(500).json({ 
+          message: 'Email service verification failed - check credentials' 
+        });
+      }
+
+      console.log('✅ Nodemailer transporter verified');
+
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'PUP SINAG Password Reset Code',
+        html: `<p>Your verification code is: <strong>${code}</strong></p><p>This code will expire in 10 minutes.</p>`,
+        text: `Your verification code is: ${code}. This code will expire in 10 minutes.`,
+      });
+
+      console.log(`✅ Email sent successfully to ${email}`);
+      return res.json({ message: 'Verification code sent' });
+    } catch (emailErr) {
+      console.error('SEND CODE ERROR (Email):', emailErr.message || emailErr);
+      console.error('Full error:', emailErr);
+      
+      // Provide more specific error messages
+      if (emailErr.message.includes('Invalid login') || emailErr.message.includes('authentication failed')) {
+        return res.status(500).json({ 
+          message: 'Email authentication failed - invalid credentials' 
+        });
+      }
+      
+      return res.status(500).json({ 
+        message: 'Failed to send verification code', 
+        error: emailErr.message 
+      });
+    }
   } catch (err) {
-    console.error('SEND CODE ERROR:', err);
-    return res.status(500).json({ message: 'Server error' });
+    console.error('SEND CODE ERROR (General):', err.message || err);
+    console.error('Full error:', err);
+    return res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
@@ -58,7 +121,17 @@ const verifyResetCode = async (req, res) => {
       return res.status(400).json({ message: 'Email and code are required' });
     }
 
-    const user = await User.findOne({ where: { email } });
+    let user;
+    try {
+      user = await User.findOne({ where: { email } });
+    } catch (dbErr) {
+      console.error('DATABASE ERROR (Finding user for verification):', dbErr.message);
+      return res.status(500).json({ 
+        message: 'Database error', 
+        error: dbErr.message 
+      });
+    }
+
     if (!user || !user.resetCode || !user.resetCodeExpires) {
       return res.status(400).json({ message: 'Invalid or expired code' });
     }
@@ -77,8 +150,8 @@ const verifyResetCode = async (req, res) => {
 
     return res.json({ message: 'Code verified' });
   } catch (err) {
-    console.error('VERIFY CODE ERROR:', err);
-    return res.status(500).json({ message: 'Server error' });
+    console.error('VERIFY CODE ERROR (General):', err.message || err);
+    return res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
@@ -93,7 +166,17 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
-    const user = await User.findOne({ where: { email } });
+    let user;
+    try {
+      user = await User.findOne({ where: { email } });
+    } catch (dbErr) {
+      console.error('DATABASE ERROR (Finding user for reset):', dbErr.message);
+      return res.status(500).json({ 
+        message: 'Database error', 
+        error: dbErr.message 
+      });
+    }
+
     if (!user || !user.resetCode || !user.resetCodeExpires) {
       return res.status(400).json({ message: 'Invalid or expired code' });
     }
@@ -110,19 +193,39 @@ const resetPassword = async (req, res) => {
     }
 
     // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.passwordHash = hashedPassword;
+    let hashedPassword;
+    try {
+      hashedPassword = await bcrypt.hash(newPassword, 10);
+    } catch (hashErr) {
+      console.error('BCRYPT ERROR:', hashErr.message);
+      return res.status(500).json({ 
+        message: 'Failed to hash password', 
+        error: hashErr.message 
+      });
+    }
+
+    user.password = hashedPassword;
 
     // Clear reset fields
     user.resetCode = null;
     user.resetCodeExpires = null;
 
-    await user.save();
+    // Save updated user to database
+    try {
+      await user.save();
+      console.log(`✅ Password reset successfully for ${email}`);
+    } catch (saveErr) {
+      console.error('DATABASE ERROR (Saving new password):', saveErr.message);
+      return res.status(500).json({ 
+        message: 'Failed to save new password', 
+        error: saveErr.message 
+      });
+    }
 
     return res.json({ message: 'Password reset successful' });
   } catch (err) {
-    console.error('RESET PASSWORD ERROR:', err);
-    return res.status(500).json({ message: 'Server error' });
+    console.error('RESET PASSWORD ERROR (General):', err.message || err);
+    return res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
