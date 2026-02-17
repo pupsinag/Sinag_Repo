@@ -335,12 +335,41 @@ exports.approveLogByAdviser = async (req, res) => {
 ========================= */
 exports.getCompanyInternDailyLogs = async (req, res) => {
   try {
-    const { InternDailyLog, Intern } = getModels();
+    const { InternDailyLog, Intern, Supervisor, Company } = getModels();
     const { internId } = req.params;
 
     console.log('\n=== GET COMPANY INTERN DAILY LOGS ===');
     console.log('Intern ID:', internId);
-    console.log('Company ID:', req.user.id);
+    console.log('Logged-in user ID:', req.user.id);
+    console.log('User role:', req.user.role);
+
+    /* =========================
+       DETERMINE COMPANY ID
+    ========================= */
+    let companyId = null;
+
+    // ✅ If user role is 'supervisor' (company users), req.user.id is the company ID
+    if (req.user.role === 'supervisor') {
+      companyId = req.user.id;
+      console.log('✅ User is a supervisor/company - company_id:', companyId);
+    } else {
+      // Try to find supervisor record for other roles
+      const supervisor = await Supervisor.findOne({
+        where: {
+          user_id: req.user.id,
+        },
+      });
+
+      if (supervisor) {
+        companyId = supervisor.company_id;
+        console.log('✅ Supervisor record found - company_id:', companyId);
+      }
+    }
+
+    if (!companyId) {
+      console.error('❌ Unable to determine company ID for user:', req.user.id);
+      return res.status(403).json({ message: 'Unauthorized - you are not authorized to view logs' });
+    }
 
     /* =========================
        VERIFY INTERN BELONGS TO COMPANY
@@ -348,12 +377,14 @@ exports.getCompanyInternDailyLogs = async (req, res) => {
     const intern = await Intern.findOne({
       where: {
         id: internId,
-        company_id: req.user.id,
+        company_id: companyId,
       },
     });
 
     if (!intern) {
       console.error('❌ Intern not found or does not belong to this company');
+      console.error('   Intern ID:', internId);
+      console.error('   Company ID:', companyId);
       return res.status(403).json({ message: 'Unauthorized access to intern logs' });
     }
 
@@ -417,13 +448,15 @@ exports.getCompanyInternDailyLogs = async (req, res) => {
 ========================= */
 exports.approveLogBySupervisor = async (req, res) => {
   try {
-    const { InternDailyLog, Intern } = getModels();
+    const { InternDailyLog, Intern, Supervisor } = getModels();
     const { reportId } = req.params;
     const { supervisor_status, supervisor_comment } = req.body;
 
     console.log('\n=== APPROVE LOG (SUPERVISOR) ===');
     console.log('Report ID:', reportId);
     console.log('Status:', supervisor_status);
+    console.log('Logged-in user ID:', req.user.id);
+    console.log('User role:', req.user.role);
 
     /* =========================
        VALIDATION
@@ -451,10 +484,39 @@ exports.approveLogBySupervisor = async (req, res) => {
       return res.status(404).json({ message: 'Daily log not found' });
     }
 
-    if (log.Intern.company_id !== req.user.id) {
-      console.error('❌ Unauthorized - log does not belong to company');
-      return res.status(403).json({ message: 'Unauthorized access' });
+    /* =========================
+       DETERMINE COMPANY ID & VERIFY AUTHORIZATION
+    ========================= */
+    let companyId = null;
+
+    // ✅ If user role is 'supervisor' (company users), req.user.id is the company ID
+    if (req.user.role === 'supervisor') {
+      companyId = req.user.id;
+      console.log('✅ User is a supervisor/company - company_id:', companyId);
+    } else {
+      // Try to find supervisor record
+      const supervisor = await Supervisor.findOne({
+        where: {
+          user_id: req.user.id,
+        },
+      });
+
+      if (supervisor) {
+        companyId = supervisor.company_id;
+        console.log('✅ Supervisor found - company_id:', companyId);
+      }
     }
+
+    // Check if the logged-in user's company matches the intern's company
+    const internCompanyId = log.Intern.company_id;
+    if (companyId !== internCompanyId) {
+      console.error('❌ Unauthorized - intern does not belong to user\'s company');
+      console.error('   Intern company_id:', internCompanyId);
+      console.error('   User company_id:', companyId);
+      return res.status(403).json({ message: 'Unauthorized access - you do not supervise this intern' });
+    }
+
+    console.log('✅ Authorization verified - supervisor belongs to company:', companyId);
 
     /* =========================
        UPDATE LOG

@@ -532,8 +532,8 @@ exports.assignHTE = async (req, res, next) => {
   try {
     const { companyId, position, supervisorName, supervisorEmail } = req.body;
 
-    if (!companyId || !supervisorName) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    if (!companyId || !supervisorName || !supervisorEmail) {
+      return res.status(400).json({ message: 'Missing required fields: companyId, supervisorName, and supervisorEmail are required' });
     }
 
     const intern = await Intern.findByPk(req.params.id);
@@ -550,11 +550,25 @@ exports.assignHTE = async (req, res, next) => {
       },
     });
     if (!supervisor) {
-      supervisor = await Supervisor.create({
-        name: supervisorName,
-        email: supervisorEmail || null,
-        company_id: companyId,
-      });
+      try {
+        supervisor = await Supervisor.create({
+          name: supervisorName,
+          email: supervisorEmail,
+          company_id: companyId,
+        });
+      } catch (err) {
+        // If email already exists, find the supervisor by email and use that
+        if (err.name === 'SequelizeUniqueConstraintError' && err.fields?.email) {
+          supervisor = await Supervisor.findOne({
+            where: { email: supervisorEmail },
+          });
+          if (!supervisor) {
+            throw new Error('Supervisor with this email already exists but cannot be found');
+          }
+        } else {
+          throw err;
+        }
+      }
     }
 
     intern.company_id = companyId;
