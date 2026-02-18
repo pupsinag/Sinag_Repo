@@ -43,8 +43,10 @@ module.exports = (sequelize, DataTypes) => {
       },
     },
     {
-      tableName: 'supervisorevaluationitems',
-      timestamps: false, // <-- Add this line
+      tableName: 'supervisor_evaluation_items',
+      timestamps: true,
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
       underscored: true,
       // Add indexes, hooks, or scopes here if needed
     },

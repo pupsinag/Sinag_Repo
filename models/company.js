@@ -69,7 +69,7 @@ module.exports = (sequelize, DataTypes) => {
       tableName: 'companies',
       timestamps: true,
       createdAt: 'createdAt',
-      updatedAt: false,
+      updatedAt: 'updatedAt',
     },
   );
 
