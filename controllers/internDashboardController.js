@@ -14,6 +14,14 @@ exports.getInternDashboard = async (req, res) => {
 
     const userId = req.user.id;
 
+    const user = await User.findByPk(userId, {
+      attributes: ['firstName', 'lastName', 'mi', 'studentId'],
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User record not found' });
+    }
+
     /* =========================
        FETCH INTERN + RELATIONS
     ========================= */
@@ -21,12 +29,6 @@ exports.getInternDashboard = async (req, res) => {
       where: { user_id: userId },
 
       include: [
-        {
-          model: User,
-          as: 'User',
-          required: true,
-          attributes: ['firstName', 'lastName', 'mi', 'studentId'],
-        },
         {
           model: Company,
           as: 'company',
@@ -45,18 +47,37 @@ exports.getInternDashboard = async (req, res) => {
        VALIDATION
     ========================= */
     if (!intern) {
-      return res.status(404).json({ message: 'Intern record not found' });
+      return res.json({
+        firstName: user.firstName,
+        fullName: `${user.lastName}, ${user.firstName}${user.mi ? ` ${user.mi}` : ''}`,
+        studentId: user.studentId,
+        status: 'Pending',
+        remarks: null,
+        documents: [
+          { name: 'Consent Form', uploaded: false, file: null },
+          { name: 'Notarized Agreement', uploaded: false, file: null },
+          { name: 'MOA', uploaded: false, file: null },
+          { name: 'Resume', uploaded: false, file: null },
+          { name: 'COR', uploaded: false, file: null },
+          { name: 'Insurance', uploaded: false, file: null },
+          { name: 'Medical Certificate', uploaded: false, file: null },
+        ],
+        companyDetails: null,
+        setupRequired: true,
+      });
     }
 
-    const docs = intern.InternDocuments || {};
+    const docs = Array.isArray(intern.InternDocuments)
+      ? (intern.InternDocuments[0] || {})
+      : (intern.InternDocuments || {});
 
     /* =========================
        RESPONSE
     ========================= */
     return res.json({
-      firstName: intern.User.firstName,
-      fullName: `${intern.User.lastName}, ${intern.User.firstName}${intern.User.mi ? ` ${intern.User.mi}` : ''}`,
-      studentId: intern.User.studentId,
+      firstName: user.firstName,
+      fullName: `${user.lastName}, ${user.firstName}${user.mi ? ` ${user.mi}` : ''}`,
+      studentId: user.studentId,
 
       status: intern.status,
       remarks: intern.remarks || null,

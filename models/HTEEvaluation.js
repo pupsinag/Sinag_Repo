@@ -80,7 +80,7 @@ const HTEEvaluation = sequelize.define(
     tableName: 'hte_evaluations',
     timestamps: true,
     createdAt: 'createdAt',
-    updatedAt: 'updatedAt',
+    updatedAt: false,
     indexes: [
       // Prevent duplicate HTE evaluations per intern per school term
       { name: 'uniq_hte_eval', unique: true, fields: ['intern_id', 'academic_year', 'school_term'] },
