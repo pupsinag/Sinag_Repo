@@ -71,7 +71,12 @@ exports.signup = async (req, res, next) => {
 ========================= */
 exports.login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const email = (req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
 
     console.log('🔍 Login attempt:', { email });
 
@@ -82,8 +87,18 @@ exports.login = async (req, res, next) => {
     if (user) {
       console.log('✅ User found:', { id: user.id, email: user.email });
 
-      // ✅ FIXED: Use 'password' not 'passwordHash'
-      const match = await bcrypt.compare(password, user.password);
+      const storedPassword = user.password || user.passwordHash || '';
+      let match = false;
+
+      if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$')) {
+        match = await bcrypt.compare(password, storedPassword);
+      } else if (storedPassword) {
+        match = password === storedPassword;
+        if (match) {
+          user.password = await bcrypt.hash(password, 10);
+          await user.save();
+        }
+      }
 
       if (!match) {
         console.error('❌ Password mismatch');
