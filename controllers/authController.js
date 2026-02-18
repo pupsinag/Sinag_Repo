@@ -7,7 +7,7 @@ const { User, Intern, Company, InternDocuments } = require('../models');
 const db = require('../models');
 const sendCredentialsEmail = require('../utils/sendCredentialsEmail');
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
 /* =========================
    HELPER: SIGN JWT
