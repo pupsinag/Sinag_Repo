@@ -144,16 +144,23 @@ exports.login = async (req, res, next) => {
         maxAge: 7 * 24 * 60 * 60 * 1000,
       };
 
+      // ✅ Set domain explicitly for cookie persistence across navigation
       if (process.env.COOKIE_DOMAIN) {
         cookieOptions.domain = process.env.COOKIE_DOMAIN;
-      } else if (process.env.NODE_ENV === 'production' && req.hostname) {
+        console.log('✅ Cookie domain from env:', cookieOptions.domain);
+      } else if (req.hostname) {
         const hostParts = req.hostname.split('.');
         if (hostParts.length >= 2) {
-          cookieOptions.domain = `.${hostParts.slice(-2).join('.')}`;
+          cookieOptions.domain = hostParts.slice(-2).join('.');
+          console.log('✅ Auto-detected cookie domain:', cookieOptions.domain);
+        } else {
+          cookieOptions.domain = req.hostname;
+          console.log('✅ Using full hostname:', cookieOptions.domain);
         }
       }
 
       res.cookie('token', token, cookieOptions);
+      console.log('🍪 Cookie set:', { domain: cookieOptions.domain, path: cookieOptions.path, secure: cookieOptions.secure });
 
       return res.json({ token });
     }
@@ -194,12 +201,18 @@ exports.login = async (req, res, next) => {
         maxAge: 7 * 24 * 60 * 60 * 1000,
       };
 
+      // ✅ Set domain explicitly for cookie persistence across navigation
       if (process.env.COOKIE_DOMAIN) {
         cookieOptions.domain = process.env.COOKIE_DOMAIN;
-      } else if (process.env.NODE_ENV === 'production' && req.hostname) {
+        console.log('✅ Cookie domain from env:', cookieOptions.domain);
+      } else if (req.hostname) {
         const hostParts = req.hostname.split('.');
         if (hostParts.length >= 2) {
-          cookieOptions.domain = `.${hostParts.slice(-2).join('.')}`;
+          cookieOptions.domain = hostParts.slice(-2).join('.');
+          console.log('✅ Auto-detected cookie domain:', cookieOptions.domain);
+        } else {
+          cookieOptions.domain = req.hostname;
+          console.log('✅ Using full hostname:', cookieOptions.domain);
         }
       }
 
