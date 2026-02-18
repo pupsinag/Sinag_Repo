@@ -34,23 +34,32 @@ function authMiddleware(allowedRoles = []) {
        1. CHECK AUTH HEADER
     ========================= */
     let token = null;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
+    
+    // Priority 1: Cookie (most reliable for browser-based apps)
+    if (cookieToken && decodeURIComponent(cookieToken).trim()) {
+      token = decodeURIComponent(cookieToken).trim();
+      console.log('✅ Token from cookie');
+    }
+    
+    // Priority 2: Bearer Authorization header (if valid)
+    if (!token && authHeader && authHeader.startsWith('Bearer ')) {
       const extractedToken = authHeader.split(' ')[1];
-      if (extractedToken && extractedToken.trim()) {
+      if (extractedToken && extractedToken.trim() && extractedToken !== 'null') {
         token = extractedToken.trim();
+        console.log('✅ Token from Bearer header');
       }
     }
     
-    if (!token && headerToken && String(headerToken).trim()) {
+    // Priority 3: x-auth-token header
+    if (!token && headerToken && String(headerToken).trim() && String(headerToken) !== 'null') {
       token = String(headerToken).trim();
+      console.log('✅ Token from x-auth-token header');
     }
     
-    if (!token && cookieToken && decodeURIComponent(cookieToken).trim()) {
-      token = decodeURIComponent(cookieToken).trim();
-    }
-    
+    // Priority 4: Query parameter
     if (!token && queryToken && String(queryToken).trim()) {
       token = String(queryToken).trim();
+      console.log('✅ Token from query');
     }
 
     if (!token) {
