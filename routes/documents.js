@@ -17,13 +17,28 @@ const notarizedAgreementController = require('../controllers/notarizedAgreementC
 router.use(authMiddleware());
 
 /* =========================
+   CUSTOM ERROR HANDLER FOR FILE UPLOADS
+========================= */
+const handleFileUploadError = (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer error:', err.message);
+      return res.status(400).json({
+        message: 'File upload failed: ' + (err.message || 'Unknown error'),
+      });
+    }
+    next();
+  });
+};
+
+/* =========================
    INTERN DOCUMENT ROUTES
 ========================= */
 
 // Upload manually uploaded intern documents (Resume, COR, etc.)
 router.post(
   '/intern-docs/upload',
-  upload.single('file'), // 🔥 MUST MATCH frontend FormData.append('file')
+  handleFileUploadError, // 🔥 MUST MATCH frontend FormData.append('file')
   uploadInternDoc,
 );
 

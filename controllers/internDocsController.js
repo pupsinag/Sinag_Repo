@@ -12,15 +12,22 @@ const { Intern, Company, InternDocuments } = require('../models');
 // POST /api/auth/intern-docs/upload
 async function uploadInternDoc(req, res) {
   try {
-    console.log('[uploadInternDoc] START - user:', req.user?.id);
+    console.log('[DEBUG] uploadInternDoc - req.user:', req.user?.id);
+    console.log('[DEBUG] uploadInternDoc - req.file:', req.file?.filename);
+    console.log('[DEBUG] uploadInternDoc - req.body:', req.body);
+
     const file = req.file;
 
     if (!file) {
-      console.error('[uploadInternDoc] No file provided');
+      console.error('❌ No file provided in request');
       return res.status(400).json({ message: 'No file uploaded' });
     }
 
-    console.log('[uploadInternDoc] File received:', file.filename);
+    // Verify user is authenticated
+    if (!req.user || !req.user.id) {
+      console.error('❌ User not authenticated or missing user data');
+      return res.status(401).json({ message: 'User authentication failed' });
+    }
 
     if (file.originalname.toLowerCase().includes('moa')) {
       return res.status(403).json({
@@ -31,14 +38,13 @@ async function uploadInternDoc(req, res) {
     /* =========================
        FIND INTERN
     ========================= */
-    console.log('[uploadInternDoc] Looking for intern with user_id:', req.user.id);
     const intern = await Intern.findOne({
       where: { user_id: req.user.id },
     });
 
-    console.log('[uploadInternDoc] Intern found:', intern ? 'YES (id=' + intern.id + ')' : 'NO');
     if (!intern) {
-      return res.status(404).json({ message: 'Intern not found for this user' });
+      console.error('❌ Intern not found for user_id:', req.user.id);
+      return res.status(404).json({ message: 'Intern not found' });
     }
 
     /* =========================
@@ -70,12 +76,25 @@ async function uploadInternDoc(req, res) {
     ========================= */
     if (docs[targetColumn]) {
       const oldPath = path.join(__dirname, '..', 'uploads', docs[targetColumn]);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      if (fs.existsSync(oldPath)) {
+        try {
+          fs.unlinkSync(oldPath);
+          console.log('✅ Deleted old file:', docs[targetColumn]);
+        } catch (err) {
+          console.warn('⚠️ Failed to delete old file:', err.message);
+        }
+      }
     }
 
     docs[targetColumn] = file.filename;
     docs.uploaded_at = new Date();
     await docs.save();
+
+    console.log('✅ Document saved successfully:', {
+      intern_id: intern.id,
+      column: targetColumn,
+      filename: file.filename,
+    });
 
     return res.json({
       message: 'Document uploaded successfully',
@@ -83,8 +102,12 @@ async function uploadInternDoc(req, res) {
       file: file.filename,
     });
   } catch (err) {
-    console.error('❌ UPLOAD INTERN DOC ERROR:', err);
-    return res.status(500).json({ message: 'Failed to upload document' });
+    console.error('❌ UPLOAD INTERN DOC ERROR:', err.message);
+    console.error('Stack trace:', err.stack);
+    return res.status(500).json({
+      message: 'Failed to upload document',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
   }
 }
 
@@ -94,8 +117,6 @@ async function uploadInternDoc(req, res) {
 // GET /api/auth/intern-docs/me
 async function getInternDocuments(req, res) {
   try {
-    console.log('[getInternDocuments] req.user:', req.user);
-    
     const intern = await Intern.findOne({
       where: { user_id: req.user.id },
       include: [
@@ -108,25 +129,21 @@ async function getInternDocuments(req, res) {
       ],
     });
 
-    console.log('[getInternDocuments] Found intern:', intern ? 'YES' : 'NO');
-    
     if (!intern) {
-      return res.status(404).json({ message: 'Intern not found for this user' });
+      return res.status(404).json({ message: 'Intern not found' });
     }
 
     const docs = await InternDocuments.findOne({
       where: { intern_id: intern.id },
     });
 
-    console.log('[getInternDocuments] Found docs:', docs ? 'YES' : 'NO');
-
     return res.json({
       ...(docs?.dataValues || {}),
       MOA: intern.company?.moaFile || null,
     });
   } catch (err) {
-    console.error('❌ GET INTERN DOCS ERROR:', err.message, err.stack);
-    return res.status(500).json({ message: 'Failed to fetch documents', error: err.message });
+    console.error('❌ GET INTERN DOCS ERROR:', err);
+    return res.status(500).json({ message: 'Failed to fetch documents' });
   }
 }
 

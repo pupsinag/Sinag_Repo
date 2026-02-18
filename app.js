@@ -167,18 +167,6 @@ const internDailyLogRoutes = loadRoute(
 if (internDailyLogRoutes) app.use('/api', internDailyLogRoutes);
 
 // =========================
-// DIAGNOSTIC ROUTE (for troubleshooting)
-// =========================
-const diagnosticRoute = loadRoute(
-  path.join(__dirname, 'routes', 'diagnostic.js'),
-  'diagnostic',
-);
-if (diagnosticRoute) {
-  console.log('[ROUTE] /api/diagnostic loaded and registered');
-  app.use('/api/diagnostic', diagnosticRoute);
-}
-
-// =========================
 // SERVE FRONTEND (PRODUCTION)
 // =========================
 const publicPath = path.join(__dirname, 'public/dist');
