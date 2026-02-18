@@ -23,25 +23,16 @@ exports.getInternDashboard = async (req, res) => {
     }
 
     /* =========================
-       FETCH INTERN + RELATIONS
+       FETCH INTERN (PRIMARY)
     ========================= */
-    const intern = await Intern.findOne({
-      where: { user_id: userId },
-
-      include: [
-        {
-          model: Company,
-          as: 'company',
-          required: false,
-          attributes: ['name', 'supervisorName', 'moaStart', 'moaEnd', 'moaFile'],
-        },
-        {
-          model: InternDocuments,
-          as: 'InternDocuments',
-          required: false,
-        },
-      ],
-    });
+    let intern = null;
+    try {
+      intern = await Intern.findOne({
+        where: { user_id: userId },
+      });
+    } catch (err) {
+      console.error('❌ INTERN LOOKUP ERROR:', err.message);
+    }
 
     /* =========================
        VALIDATION
@@ -67,9 +58,25 @@ exports.getInternDashboard = async (req, res) => {
       });
     }
 
-    const docs = Array.isArray(intern.InternDocuments)
-      ? (intern.InternDocuments[0] || {})
-      : (intern.InternDocuments || {});
+    let docs = {};
+    let company = null;
+    if (intern) {
+      try {
+        docs = await InternDocuments.findOne({ where: { intern_id: intern.id } }) || {};
+      } catch (err) {
+        console.error('❌ INTERN DOCS LOOKUP ERROR:', err.message);
+      }
+
+      if (intern.company_id) {
+        try {
+          company = await Company.findByPk(intern.company_id, {
+            attributes: ['name', 'supervisorName', 'moaStart', 'moaEnd', 'moaFile'],
+          });
+        } catch (err) {
+          console.error('❌ COMPANY LOOKUP ERROR:', err.message);
+        }
+      }
+    }
 
     /* =========================
        RESPONSE
@@ -85,19 +92,19 @@ exports.getInternDashboard = async (req, res) => {
       documents: [
         { name: 'Consent Form', uploaded: !!docs.consent_form, file: docs.consent_form ?? null },
         { name: 'Notarized Agreement', uploaded: !!docs.notarized_agreement, file: docs.notarized_agreement ?? null },
-        { name: 'MOA', uploaded: !!intern.company?.moaFile, file: intern.company?.moaFile ?? null },
+        { name: 'MOA', uploaded: !!company?.moaFile, file: company?.moaFile ?? null },
         { name: 'Resume', uploaded: !!docs.resume, file: docs.resume ?? null },
         { name: 'COR', uploaded: !!docs.cor, file: docs.cor ?? null },
         { name: 'Insurance', uploaded: !!docs.insurance, file: docs.insurance ?? null },
         { name: 'Medical Certificate', uploaded: !!docs.medical_cert, file: docs.medical_cert ?? null },
       ],
 
-      companyDetails: intern.company
+      companyDetails: company
         ? {
-            companyName: intern.company.name,
-            supervisor: intern.company.supervisorName,
-            startDate: intern.company.moaStart,
-            endDate: intern.company.moaEnd,
+            companyName: company.name,
+            supervisor: company.supervisorName,
+            startDate: company.moaStart,
+            endDate: company.moaEnd,
           }
         : null,
     });
