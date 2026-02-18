@@ -146,6 +146,11 @@ exports.login = async (req, res, next) => {
 
       if (process.env.COOKIE_DOMAIN) {
         cookieOptions.domain = process.env.COOKIE_DOMAIN;
+      } else if (process.env.NODE_ENV === 'production' && req.hostname) {
+        const hostParts = req.hostname.split('.');
+        if (hostParts.length >= 2) {
+          cookieOptions.domain = `.${hostParts.slice(-2).join('.')}`;
+        }
       }
 
       res.cookie('token', token, cookieOptions);
@@ -191,6 +196,11 @@ exports.login = async (req, res, next) => {
 
       if (process.env.COOKIE_DOMAIN) {
         cookieOptions.domain = process.env.COOKIE_DOMAIN;
+      } else if (process.env.NODE_ENV === 'production' && req.hostname) {
+        const hostParts = req.hostname.split('.');
+        if (hostParts.length >= 2) {
+          cookieOptions.domain = `.${hostParts.slice(-2).join('.')}`;
+        }
       }
 
       res.cookie('token', token, cookieOptions);
