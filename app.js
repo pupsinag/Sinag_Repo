@@ -137,7 +137,7 @@ if (internEvalReportRoute) app.use('/api/reports', internEvalReportRoute);
 const forgotPasswordRoute = loadRoute('./routes/forgotPasswordRoutes', 'forgotPasswordRoutes');
 if (forgotPasswordRoute) app.use('/api/forgot-password', forgotPasswordRoute);
 
-const hteEvaluationsRoute = loadRoute('./routes/HTEEvaluations', 'HTEEvaluations');
+const hteEvaluationsRoute = loadRoute('./routes/hteEvaluations', 'hteEvaluations');
 if (hteEvaluationsRoute) app.use('/api/hte-evaluations', hteEvaluationsRoute);
 
 const supervisorEvaluationsRouter = require('./routes/SupervisorEvaluations');
