@@ -19,7 +19,7 @@ const signToken = (payload) => {
       role: payload.role.toLowerCase(),
     },
     JWT_SECRET,
-    { expiresIn: '5m' },
+    { expiresIn: '7d' },
   );
 };
 
