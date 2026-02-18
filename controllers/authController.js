@@ -136,6 +136,13 @@ exports.login = async (req, res, next) => {
         lastName: user.lastName,
       });
 
+      res.cookie('token', token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
       return res.json({ token });
     }
 
@@ -167,6 +174,13 @@ exports.login = async (req, res, next) => {
       });
 
       // Return token and list of supervisors for selection
+      res.cookie('token', token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
       return res.json({
         token,
         company: {

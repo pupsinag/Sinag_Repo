@@ -21,18 +21,32 @@ function authMiddleware(allowedRoles = []) {
     console.log('--- [authMiddleware] Incoming request:', req.method, req.originalUrl);
     console.log('Headers:', req.headers);
     const authHeader = req.headers.authorization;
+    const cookieHeader = req.headers.cookie || '';
+    const cookieToken = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .map((part) => part.split('='))
+      .find(([key]) => key === 'token')?.[1];
+    const queryToken = req.query?.token;
 
     /* =========================
        1. CHECK AUTH HEADER
     ========================= */
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    let token = null;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    } else if (cookieToken) {
+      token = decodeURIComponent(cookieToken);
+    } else if (queryToken) {
+      token = String(queryToken);
+    }
+
+    if (!token) {
       console.error('❌ [authMiddleware] Missing or invalid authorization header');
       return res.status(401).json({
         message: 'Missing or invalid authorization header',
       });
     }
-
-    const token = authHeader.split(' ')[1];
 
     try {
       /* =========================
