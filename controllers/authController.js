@@ -80,22 +80,42 @@ exports.login = async (req, res, next) => {
 
     console.log('🔍 Login attempt:', { email });
 
-    const user = await User.findOne({
+    let user = await User.findOne({
       where: { email: email.toLowerCase() },
     });
+
+    if (!user) {
+      user = await User.findOne({
+        where: literal(`LOWER(TRIM(email)) = ${db.sequelize.escape(email)}`),
+      });
+    }
 
     if (user) {
       console.log('✅ User found:', { id: user.id, email: user.email });
 
-      const storedPassword = user.password || user.passwordHash || '';
+      const storedPasswordRaw = user.password || user.passwordHash || '';
+      const storedPassword = String(storedPasswordRaw).trim();
+      const normalizedBcryptHash = storedPassword.startsWith('$2y$')
+        ? `$2b$${storedPassword.slice(4)}`
+        : storedPassword;
+      const passwordCandidates = password.trim() === password ? [password] : [password, password.trim()];
       let match = false;
 
-      if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$')) {
-        match = await bcrypt.compare(password, storedPassword);
+      if (
+        normalizedBcryptHash.startsWith('$2a$')
+        || normalizedBcryptHash.startsWith('$2b$')
+        || normalizedBcryptHash.startsWith('$2y$')
+      ) {
+        for (const candidate of passwordCandidates) {
+          if (await bcrypt.compare(candidate, normalizedBcryptHash)) {
+            match = true;
+            break;
+          }
+        }
       } else if (storedPassword) {
-        match = password === storedPassword;
+        match = passwordCandidates.some((candidate) => candidate === storedPassword);
         if (match) {
-          user.password = await bcrypt.hash(password, 10);
+          user.password = await bcrypt.hash(passwordCandidates[0], 10);
           await user.save();
         }
       }
