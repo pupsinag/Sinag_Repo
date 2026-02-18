@@ -35,13 +35,22 @@ function authMiddleware(allowedRoles = []) {
     ========================= */
     let token = null;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
-    } else if (headerToken) {
-      token = String(headerToken);
-    } else if (cookieToken) {
-      token = decodeURIComponent(cookieToken);
-    } else if (queryToken) {
-      token = String(queryToken);
+      const extractedToken = authHeader.split(' ')[1];
+      if (extractedToken && extractedToken.trim()) {
+        token = extractedToken.trim();
+      }
+    }
+    
+    if (!token && headerToken && String(headerToken).trim()) {
+      token = String(headerToken).trim();
+    }
+    
+    if (!token && cookieToken && decodeURIComponent(cookieToken).trim()) {
+      token = decodeURIComponent(cookieToken).trim();
+    }
+    
+    if (!token && queryToken && String(queryToken).trim()) {
+      token = String(queryToken).trim();
     }
 
     if (!token) {
