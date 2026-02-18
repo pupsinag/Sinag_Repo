@@ -12,11 +12,15 @@ const { Intern, Company, InternDocuments } = require('../models');
 // POST /api/auth/intern-docs/upload
 async function uploadInternDoc(req, res) {
   try {
+    console.log('[uploadInternDoc] START - user:', req.user?.id);
     const file = req.file;
 
     if (!file) {
+      console.error('[uploadInternDoc] No file provided');
       return res.status(400).json({ message: 'No file uploaded' });
     }
+
+    console.log('[uploadInternDoc] File received:', file.filename);
 
     if (file.originalname.toLowerCase().includes('moa')) {
       return res.status(403).json({
@@ -27,12 +31,14 @@ async function uploadInternDoc(req, res) {
     /* =========================
        FIND INTERN
     ========================= */
+    console.log('[uploadInternDoc] Looking for intern with user_id:', req.user.id);
     const intern = await Intern.findOne({
       where: { user_id: req.user.id },
     });
 
+    console.log('[uploadInternDoc] Intern found:', intern ? 'YES (id=' + intern.id + ')' : 'NO');
     if (!intern) {
-      return res.status(404).json({ message: 'Intern not found' });
+      return res.status(404).json({ message: 'Intern not found for this user' });
     }
 
     /* =========================
@@ -88,6 +94,8 @@ async function uploadInternDoc(req, res) {
 // GET /api/auth/intern-docs/me
 async function getInternDocuments(req, res) {
   try {
+    console.log('[getInternDocuments] req.user:', req.user);
+    
     const intern = await Intern.findOne({
       where: { user_id: req.user.id },
       include: [
@@ -100,21 +108,25 @@ async function getInternDocuments(req, res) {
       ],
     });
 
+    console.log('[getInternDocuments] Found intern:', intern ? 'YES' : 'NO');
+    
     if (!intern) {
-      return res.status(404).json({ message: 'Intern not found' });
+      return res.status(404).json({ message: 'Intern not found for this user' });
     }
 
     const docs = await InternDocuments.findOne({
       where: { intern_id: intern.id },
     });
 
+    console.log('[getInternDocuments] Found docs:', docs ? 'YES' : 'NO');
+
     return res.json({
       ...(docs?.dataValues || {}),
       MOA: intern.company?.moaFile || null,
     });
   } catch (err) {
-    console.error('❌ GET INTERN DOCS ERROR:', err);
-    return res.status(500).json({ message: 'Failed to fetch documents' });
+    console.error('❌ GET INTERN DOCS ERROR:', err.message, err.stack);
+    return res.status(500).json({ message: 'Failed to fetch documents', error: err.message });
   }
 }
 
