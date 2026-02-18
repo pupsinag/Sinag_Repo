@@ -21,6 +21,7 @@ function authMiddleware(allowedRoles = []) {
     console.log('--- [authMiddleware] Incoming request:', req.method, req.originalUrl);
     console.log('Headers:', req.headers);
     const authHeader = req.headers.authorization;
+    const headerToken = req.headers['x-auth-token'];
     const cookieHeader = req.headers.cookie || '';
     const cookieToken = cookieHeader
       .split(';')
@@ -35,6 +36,8 @@ function authMiddleware(allowedRoles = []) {
     let token = null;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
+    } else if (headerToken) {
+      token = String(headerToken);
     } else if (cookieToken) {
       token = decodeURIComponent(cookieToken);
     } else if (queryToken) {

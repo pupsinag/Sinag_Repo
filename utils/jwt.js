@@ -5,7 +5,7 @@ require('dotenv').config();
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
 function sign(payload, opts = {}) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: opts.expiresIn || '5m' });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: opts.expiresIn || '7d' });
 }
 
 function verify(token) {

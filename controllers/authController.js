@@ -136,13 +136,19 @@ exports.login = async (req, res, next) => {
         lastName: user.lastName,
       });
 
-      res.cookie('token', token, {
+      const cookieOptions = {
         httpOnly: true,
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
         path: '/',
         maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      };
+
+      if (process.env.COOKIE_DOMAIN) {
+        cookieOptions.domain = process.env.COOKIE_DOMAIN;
+      }
+
+      res.cookie('token', token, cookieOptions);
 
       return res.json({ token });
     }
@@ -175,13 +181,19 @@ exports.login = async (req, res, next) => {
       });
 
       // Return token and list of supervisors for selection
-      res.cookie('token', token, {
+      const cookieOptions = {
         httpOnly: true,
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
         path: '/',
         maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      };
+
+      if (process.env.COOKIE_DOMAIN) {
+        cookieOptions.domain = process.env.COOKIE_DOMAIN;
+      }
+
+      res.cookie('token', token, cookieOptions);
 
       return res.json({
         token,
