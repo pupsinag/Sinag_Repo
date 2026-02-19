@@ -62,7 +62,7 @@ function normalizeProgramFull(program) {
 exports.getAdviserPrograms = async (req, res, next) => {
   try {
     const advisers = await User.findAll({
-      where: { role: 'adviser' },
+      where: literal(`LOWER(role) = 'adviser'`),
       attributes: ['program'],
       raw: true,
     });
@@ -105,34 +105,41 @@ exports.getPrograms = async (req, res, next) => {
 exports.getCompanies = async (req, res, next) => {
   try {
     let whereCondition = {};
-    if (req.query.program && req.query.program !== 'All') {
-      if (/MAJOR/i.test(req.query.program)) {
-        whereCondition = {
-          [Op.and]: [
-            literal(`
-              REPLACE(REPLACE(UPPER(program), ' ', ''), '-', '') = '${normalizeProgramFull(req.query.program)}'
-            `),
-          ],
-        };
-      } else {
-        whereCondition = {
-          [Op.and]: [
-            literal(`
-              REPLACE(REPLACE(
-                UPPER(
-                  CASE
-                    WHEN LOCATE('MAJOR', program) > 0
-                    THEN SUBSTRING(program, 1, LOCATE('MAJOR', program) - 1)
-                    ELSE program
-                  END
-                ), ' ', ''), '-', ''
-              ) = '${normalizeProgramBase(req.query.program)}'
-            `),
-          ],
-        };
+    const userRole = req.user.role ? req.user.role.toLowerCase() : '';
+    
+    // 🟢 COORDINATOR/SUPERADMIN: see ALL companies
+    if (userRole === 'coordinator' || userRole === 'superadmin') {
+      // No filter - get all
+      if (req.query.program && req.query.program !== 'All') {
+        if (/MAJOR/i.test(req.query.program)) {
+          whereCondition = {
+            [Op.and]: [
+              literal(`
+                REPLACE(REPLACE(UPPER(program), ' ', ''), '-', '') = '${normalizeProgramFull(req.query.program)}'
+              `),
+            ],
+          };
+        } else {
+          whereCondition = {
+            [Op.and]: [
+              literal(`
+                REPLACE(REPLACE(
+                  UPPER(
+                    CASE
+                      WHEN LOCATE('MAJOR', program) > 0
+                      THEN SUBSTRING(program, 1, LOCATE('MAJOR', program) - 1)
+                      ELSE program
+                    END
+                  ), ' ', ''), '-', ''
+                ) = '${normalizeProgramBase(req.query.program)}'
+              `),
+            ],
+          };
+        }
       }
     }
-    if (req.user.role === 'adviser') {
+    // 🟢 ADVISER: see only their program's companies
+    else if (userRole === 'adviser') {
       if (!req.user.program) return res.json([]);
       if (/MAJOR/i.test(req.user.program)) {
         whereCondition = {
@@ -200,7 +207,7 @@ exports.getKpis = async (req, res, next) => {
   try {
     // Get all adviser programs (unique, non-null, trimmed)
     const adviserPrograms = await User.findAll({
-      where: { role: 'adviser' },
+      where: literal(`LOWER(role) = 'adviser'`),
       attributes: [[fn('DISTINCT', col('program')), 'program']],
       raw: true,
     });
@@ -210,7 +217,15 @@ exports.getKpis = async (req, res, next) => {
       req.query && req.query.program && req.query.program !== 'All' ? req.query.program.trim() : null;
 
     let internWhere = {};
-    if (req.user.role === 'adviser' && req.user.program) {
+    const userRole = req.user.role ? req.user.role.toLowerCase() : '';
+    
+    // 🟢 COORDINATOR/SUPERADMIN: see ALL interns
+    if (userRole === 'coordinator' || userRole === 'superadmin') {
+      // No WHERE condition - count all interns
+      internWhere = {};
+    }
+    // 🟢 ADVISER: see only their program's interns
+    else if (userRole === 'adviser' && req.user.program) {
       if (/MAJOR/i.test(req.user.program)) {
         internWhere = {
           [Op.and]: [
