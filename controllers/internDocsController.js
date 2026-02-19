@@ -282,18 +282,21 @@ async function downloadInternDoc(req, res) {
     // Find the document
     const doc = await InternDocuments.findOne({
       where: { id: docId },
-      include: [
-        {
-          model: require('../models').Intern,
-          where: { user_id: req.user.id }, // Ensure user can only download own documents
-          required: true,
-        },
-      ],
     });
 
     if (!doc) {
-      console.warn('[downloadInternDoc] Document not found or unauthorized:', docId);
-      return res.status(404).json({ message: 'Document not found or access denied' });
+      console.warn('[downloadInternDoc] Document not found:', docId);
+      return res.status(404).json({ message: 'Document not found' });
+    }
+
+    // Verify ownership - make sure this document belongs to the requesting user
+    const intern = await Intern.findOne({
+      where: { id: doc.intern_id, user_id: req.user.id },
+    });
+
+    if (!intern) {
+      console.warn('[downloadInternDoc] Unauthorized access attempt for doc:', docId);
+      return res.status(403).json({ message: 'Access denied - this document does not belong to you' });
     }
 
     const filePath = path.join(__dirname, '..', 'uploads', doc.file_path);
