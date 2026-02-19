@@ -32,20 +32,10 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
     const adviserName = adviser ? `${adviser.firstName || ''} ${adviser.lastName || ''}`.trim().toUpperCase() : 'N/A';
     console.log('[generateInternSubmittedDocuments] Adviser name:', adviserName);
 
-    const { Op, fn, col, where } = require('sequelize');
+    const { Op, fn, col } = require('sequelize');
     let whereClause = {
       program,
     };
-    
-    if (year_section) {
-      whereClause[Op.and] = [
-        where(
-          fn('REPLACE', fn('LOWER', col('year_section')), ' ', ''),
-          Op.eq,
-          year_section.replace(/\s/g, '').toLowerCase(),
-        ),
-      ];
-    }
     
     console.log('[generateInternSubmittedDocuments] Fetching interns with where clause:', JSON.stringify(whereClause));
     
@@ -54,16 +44,27 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
     // Step 1: Get base intern data
     const baseInterns = await Intern.findAll({
       where: whereClause,
-      attributes: ['id', 'user_id', 'company_id'],
+      attributes: ['id', 'user_id', 'company_id', 'year_section'],
       raw: true,
     });
     console.log(`[generateInternSubmittedDocuments] Step 1: Found ${baseInterns.length} base interns`);
 
-    if (baseInterns.length === 0) {
+    // Filter by year_section in JavaScript if provided
+    let filteredInterns = baseInterns;
+    if (year_section) {
+      const normalizedYearSection = year_section.replace(/\s/g, '').toLowerCase();
+      filteredInterns = baseInterns.filter(intern => 
+        intern.year_section && 
+        intern.year_section.replace(/\s/g, '').toLowerCase() === normalizedYearSection
+      );
+      console.log(`[generateInternSubmittedDocuments] Filtered to ${filteredInterns.length} interns for year_section: ${year_section}`);
+    }
+
+    if (filteredInterns.length === 0) {
       console.log('[generateInternSubmittedDocuments] No interns found, returning empty list');
     } else {
       // Step 2: Get user data
-      const userIds = [...new Set(baseInterns.map(i => i.user_id).filter(Boolean))];
+      const userIds = [...new Set(filteredInterns.map(i => i.user_id).filter(Boolean))];
       const users = await User.findAll({
         where: { id: userIds },
         attributes: ['id', 'firstName', 'lastName'],
@@ -73,7 +74,7 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       console.log(`[generateInternSubmittedDocuments] Step 2: Fetched ${users.length} users`);
 
       // Step 3: Get InternDocuments data
-      const internIds = baseInterns.map(i => i.id);
+      const internIds = filteredInterns.map(i => i.id);
       const allDocs = await InternDocuments.findAll({
         where: { intern_id: internIds },
         attributes: ['id', 'intern_id', 'consent_form', 'notarized_agreement', 'resume', 'cor', 'insurance', 'medical_cert'],
@@ -83,7 +84,7 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       console.log(`[generateInternSubmittedDocuments] Step 3: Fetched ${allDocs.length} documents`);
 
       // Step 4: Get Company data
-      const companyIds = [...new Set(baseInterns.map(i => i.company_id).filter(Boolean))];
+      const companyIds = [...new Set(filteredInterns.map(i => i.company_id).filter(Boolean))];
       const companies = await Company.findAll({
         where: { id: companyIds },
         attributes: ['id', 'moaFile'],
@@ -93,7 +94,7 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       console.log(`[generateInternSubmittedDocuments] Step 4: Fetched ${companies.length} companies`);
 
       // Enrich interns with related data
-      interns = baseInterns.map(intern => ({
+      interns = filteredInterns.map(intern => ({
         ...intern,
         User: userMap[intern.user_id] || {},
         InternDocuments: docsMap[intern.id] || [],
