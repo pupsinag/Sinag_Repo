@@ -259,21 +259,28 @@ async function deleteInternDoc(req, res) {
       return res.status(404).json({ message: 'Intern not found' });
     }
 
-    const docs = await InternDocuments.findOne({
-      where: { intern_id: intern.id },
+    // Find document by intern_id and document_type
+    const doc = await InternDocuments.findOne({
+      where: { 
+        intern_id: intern.id,
+        document_type: column
+      },
     });
 
-    if (!docs || !docs[column]) {
+    if (!doc) {
       return res.status(404).json({ message: 'Document not found' });
     }
 
-    const filePath = path.join(__dirname, '..', 'uploads', docs[column]);
+    // Delete the physical file
+    const filePath = path.join(__dirname, '..', 'uploads', doc.file_path);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
+      console.log('✅ File deleted:', filePath);
     }
 
-    docs[column] = null;
-    await docs.save();
+    // Delete the database record
+    await doc.destroy();
+    console.log('✅ Database record deleted:', doc.id);
 
     return res.json({ message: 'Document deleted successfully' });
   } catch (err) {
