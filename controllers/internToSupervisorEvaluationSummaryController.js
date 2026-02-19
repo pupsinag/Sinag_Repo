@@ -117,10 +117,13 @@ exports.getInternEvaluations = async (programId, year) => {
 };
 
 exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
+  console.log('\n\n========== generateInternToSupervisorEvaluationSummary STARTED ==========');
+  console.log('Request body:', JSON.stringify(req.body));
+  console.log('Request user:', req.user ? { id: req.user.id, role: req.user.role } : 'NO USER');
+  
   let doc;
   try {
     // Fetch all evaluations (no program filter)
-    console.log('\n[generateInternToSupervisorEvaluationSummary] ===== START =====');
     console.log('[generateInternToSupervisorEvaluationSummary] Fetching supervisor evaluations');
     
     const evaluations = await SupervisorEvaluation.findAll({

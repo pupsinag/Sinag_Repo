@@ -7,14 +7,18 @@ const { Op } = require('sequelize');
 const { Intern, User, Company, InternEvaluation, InternEvaluationItem, Supervisor } = require('../models');
 
 exports.generateInternEvaluationReport = async (req, res) => {
+  console.log('\n\n========== generateInternEvaluationReport STARTED ==========');
+  console.log('Request body:', JSON.stringify(req.body));
+  console.log('Request user:', req.user ? { id: req.user.id, role: req.user.role } : 'NO USER');
+  
   let doc;
 
   try {
     const { program, year_section } = req.body;
-    console.log('\n[generateInternEvaluationReport] ===== START =====');
-    console.log('[generateInternEvaluationReport] Program:', program, 'Year:', year_section);
+    console.log('[generateInternEvaluationReport] program=', program, ', year_section=', year_section);
     
     if (!program) {
+      console.error('[generateInternEvaluationReport] ❌ Program is required');
       return res.status(400).json({ message: 'Program is required' });
     }
 
