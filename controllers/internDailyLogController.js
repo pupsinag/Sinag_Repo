@@ -46,18 +46,52 @@ exports.createDailyLog = async (req, res) => {
     /* =========================
        AUTO DAY NUMBER
     ========================= */
-    const day_no = (await InternDailyLog.count({ where: { intern_id: intern.id } })) + 1;
+    let day_no;
+    try {
+      day_no = (await InternDailyLog.count({ where: { intern_id: intern.id } })) + 1;
+    } catch (err) {
+      // If day_no column doesn't exist, use legacy count query
+      console.warn('⚠️ day_no count failed, using legacy schema count');
+      const sequelize = require('../config/database');
+      const { QueryTypes } = require('sequelize');
+      const count = await sequelize.query(
+        'SELECT COUNT(*) as cnt FROM intern_daily_logs WHERE intern_id = ?',
+        {
+          replacements: [intern.id],
+          type: QueryTypes.SELECT
+        }
+      );
+      day_no = (count[0].cnt || 0) + 1;
+    }
     console.log('📊 Day number auto-calculated:', day_no);
 
     /* =========================
        PREVENT DUPLICATE DATE
     ========================= */
-    const exists = await InternDailyLog.findOne({
-      where: {
-        intern_id: intern.id,
-        log_date,
-      },
-    });
+    let exists = null;
+    try {
+      exists = await InternDailyLog.findOne({
+        where: {
+          intern_id: intern.id,
+          log_date,
+        },
+      });
+    } catch (err) {
+      // If log_date column doesn't exist, check using legacy schema column
+      console.warn('⚠️ Duplicate check failed, using legacy schema check');
+      const sequelize = require('../config/database');
+      const { QueryTypes } = require('sequelize');
+      const dateStr = log_date instanceof Date ? log_date.toISOString().split('T')[0] : log_date;
+      
+      const result = await sequelize.query(
+        'SELECT id FROM intern_daily_logs WHERE intern_id = ? AND (date = ? OR logDate = ?) LIMIT 1',
+        {
+          replacements: [intern.id, dateStr, dateStr],
+          type: QueryTypes.SELECT
+        }
+      );
+      exists = result.length > 0 ? { id: result[0].id } : null;
+    }
 
     if (exists) {
       console.error('❌ Duplicate log found for date:', log_date);
