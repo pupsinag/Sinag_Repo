@@ -92,27 +92,51 @@ exports.getInternsForAdviser = async (req, res) => {
 
     console.log('[getInternsForAdviser] Where condition:', whereCondition);
 
+    // Step 1: Get basic interns first
     const interns = await Intern.findAll({
       where: whereCondition,
-      include: [
-        {
-          model: User,
-          as: 'User',
-          attributes: ['id', 'studentId', 'lastName', 'firstName', 'mi', 'email', 'program'],
-          required: false,
-        },
-        {
-          model: Company,
-          as: 'company',
-          attributes: ['id', 'name', 'email', 'address', 'supervisorName', 'natureOfBusiness'],
-          required: false,
-        },
-      ],
-      order: [['id', 'ASC']],
+      raw: true,
     });
 
-    console.log('[getInternsForAdviser] Found', interns.length, 'interns');
-    res.json(interns);
+    console.log('[getInternsForAdviser] Found', interns.length, 'interns (basic query)');
+
+    // Step 2: Get User data for each intern
+    const internIds = interns.map((i) => i.user_id);
+    const users = {};
+    if (internIds.length > 0) {
+      const userData = await User.findAll({
+        where: { id: internIds },
+        attributes: ['id', 'studentId', 'lastName', 'firstName', 'mi', 'email', 'program'],
+        raw: true,
+      });
+      userData.forEach((u) => {
+        users[u.id] = u;
+      });
+    }
+
+    // Step 3: Get Company data for each intern
+    const companyIds = interns.map((i) => i.company_id).filter(Boolean);
+    const companies = {};
+    if (companyIds.length > 0) {
+      const companyData = await Company.findAll({
+        where: { id: companyIds },
+        attributes: ['id', 'name', 'email', 'address', 'supervisorName', 'natureOfBusiness'],
+        raw: true,
+      });
+      companyData.forEach((c) => {
+        companies[c.id] = c;
+      });
+    }
+
+    // Step 4: Enrich interns with User and Company data
+    const enrichedInterns = interns.map((intern) => ({
+      ...intern,
+      User: users[intern.user_id] || null,
+      company: intern.company_id ? companies[intern.company_id] || null : null,
+    }));
+
+    console.log('[getInternsForAdviser] Returning', enrichedInterns.length, 'enriched interns');
+    res.json(enrichedInterns);
   } catch (err) {
     console.error('❌ GET INTERNS FOR ADVISER ERROR:', err.message);
     console.error('Stack:', err.stack);
