@@ -44,7 +44,6 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
     // Step 1: Get base intern data
     const baseInterns = await Intern.findAll({
       where: whereClause,
-      attributes: ['id', 'user_id', 'company_id', 'year_section'],
       raw: true,
     });
     console.log(`[generateInternSubmittedDocuments] Step 1: Found ${baseInterns.length} base interns`);
@@ -67,7 +66,6 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       const userIds = [...new Set(filteredInterns.map(i => i.user_id).filter(Boolean))];
       const users = await User.findAll({
         where: { id: userIds },
-        attributes: ['id', 'firstName', 'lastName'],
         raw: true,
       });
       const userMap = Object.fromEntries(users.map(u => [u.id, u]));
@@ -77,7 +75,6 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       const internIds = filteredInterns.map(i => i.id);
       const allDocs = await InternDocuments.findAll({
         where: { intern_id: internIds },
-        attributes: ['id', 'intern_id', 'consent_form', 'notarized_agreement', 'resume', 'cor', 'insurance', 'medical_cert'],
         raw: true,
       });
       const docsMap = Object.fromEntries(allDocs.map(d => [d.intern_id, [d]]));
@@ -87,7 +84,6 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       const companyIds = [...new Set(filteredInterns.map(i => i.company_id).filter(Boolean))];
       const companies = await Company.findAll({
         where: { id: companyIds },
-        attributes: ['id', 'moaFile'],
         raw: true,
       });
       const companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
