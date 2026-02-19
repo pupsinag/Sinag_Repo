@@ -79,6 +79,7 @@ module.exports = (sequelize, DataTypes) => {
     {
       tableName: 'intern_evaluations',
       timestamps: true,
+      underscored: false,
       indexes: [],
     },
   );

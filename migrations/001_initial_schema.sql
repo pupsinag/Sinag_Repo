@@ -101,22 +101,22 @@ CREATE TABLE IF NOT EXISTS hte_evaluations (
 
 -- Intern Evaluations table
 CREATE TABLE IF NOT EXISTS intern_evaluations (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  intern_id INTEGER NOT NULL,
-  internName TEXT NOT NULL,
-  section TEXT,
-  hteName TEXT,
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  intern_id INT UNSIGNED NOT NULL,
+  internName VARCHAR(255) NOT NULL,
+  section VARCHAR(255),
+  hteName VARCHAR(255),
   jobDescription TEXT,
-  totalScore REAL NOT NULL,
+  totalScore FLOAT NOT NULL,
   technicalDetails TEXT,
   recommendations TEXT,
   remarks TEXT,
-  evaluator TEXT NOT NULL,
-  designation TEXT NOT NULL,
-  date TEXT NOT NULL,
-  conforme TEXT,
-  createdAt TEXT NOT NULL,
-  updatedAt TEXT NOT NULL,
+  evaluator VARCHAR(255) NOT NULL,
+  designation VARCHAR(255) NOT NULL,
+  date DATE NOT NULL,
+  conforme VARCHAR(255),
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (intern_id) REFERENCES interns(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
