@@ -22,6 +22,13 @@ exports.generateInternEvaluationReport = async (req, res) => {
       return res.status(400).json({ message: 'Program is required' });
     }
 
+    // Fetch adviser name for the program
+    const adviser = await User.findOne({
+      where: { role: 'adviser', program },
+    });
+    const adviserName = adviser ? `${adviser.firstName || ''} ${adviser.lastName || ''}`.trim().toUpperCase() : 'N/A';
+    console.log('[generateInternEvaluationReport] Adviser name:', adviserName);
+
     /* =============================
        FETCH DATA
     ============================== */
