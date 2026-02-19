@@ -129,8 +129,9 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
     let evaluations = []; // Declare outside if block
     
     // Step 1: Get base evaluations
+    // Only select columns that definitely exist on the table to avoid schema mismatch errors
     const baseEvaluations = await SupervisorEvaluation.findAll({
-      attributes: ['id', 'intern_id', 'company_id', 'rating', 'date'],
+      attributes: ['id', 'intern_id', 'supervisor_id', 'academic_year', 'semester', 'user_id'],
       raw: true,
     });
     console.log(`[generateInternToSupervisorEvaluationSummary] Step 1: Found ${baseEvaluations.length} base evaluations`);
@@ -142,7 +143,7 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
       const internIds = [...new Set(baseEvaluations.map(e => e.intern_id).filter(Boolean))];
       const interns = await Intern.findAll({
         where: { id: internIds },
-        attributes: ['id', 'user_id', 'supervisor_id'],
+        attributes: ['id', 'user_id', 'supervisor_id', 'company_id'], // include company_id as a fallback
         raw: true,
       });
       const internMap = Object.fromEntries(interns.map(i => [i.id, i]));
@@ -166,31 +167,33 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
       const supervisorMap = Object.fromEntries(supervisors.map(s => [s.id, s]));
       console.log(`[generateInternToSupervisorEvaluationSummary] Step 2: Fetched ${interns.length} interns, ${users.length} users, ${supervisors.length} supervisors`);
 
-      // Step 3: Get Company data
-      const companyIds = [...new Set(baseEvaluations.map(e => e.company_id).filter(Boolean))];
-      const companies = await Company.findAll({
-        where: { id: companyIds },
-        attributes: ['id', 'name'],
-        raw: true,
-      });
+      // Step 3: Get Company data (collect from both evaluations and interns for compatibility)
+      const evalCompanyIds = baseEvaluations.map(e => e.company_id).filter(Boolean);
+      const internCompanyIds = interns.map(i => i.company_id).filter(Boolean);
+      const companyIds = [...new Set([...evalCompanyIds, ...internCompanyIds])];
+      const companies = companyIds.length > 0
+        ? await Company.findAll({ where: { id: companyIds }, attributes: ['id', 'name'], raw: true })
+        : [];
       const companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
       console.log(`[generateInternToSupervisorEvaluationSummary] Step 3: Fetched ${companies.length} companies`);
 
       // Step 4: Enrich evaluations with related data
-      evaluations = baseEvaluations.map(eval => {
-        const intern = internMap[eval.intern_id] || {};
+      evaluations = baseEvaluations.map((ev) => {
+        const intern = internMap[ev.intern_id] || {};
         const user = userMap[intern.user_id] || {};
         const supervisor = supervisorMap[intern.supervisor_id] || {};
-        const company = companyMap[eval.company_id] || {};
-        
+        // company may come from the evaluation (if present) or from the intern record
+        const company = (ev.company_id && companyMap[ev.company_id]) || (intern.company_id && companyMap[intern.company_id]) || {};
+
         return {
-          ...eval,
+          ...ev,
           intern: {
             id: intern.id,
             user_id: intern.user_id,
             supervisor_id: intern.supervisor_id,
             User: user,
             Supervisor: supervisor,
+            company_id: intern.company_id || null,
           },
           supervisorCompany: company,
         };
@@ -200,9 +203,9 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
     
     console.log(`[generateInternToSupervisorEvaluationSummary] Total evaluations: ${evaluations.length}`);
 
-    // Fetch all SupervisorEvaluationItems
+    // Fetch all SupervisorEvaluationItems (limit attributes to avoid timestamp/name mismatches)
     const SupervisorEvaluationItem = require('../models')['SupervisorEvaluationItem'];
-    const allItems = await SupervisorEvaluationItem.findAll();
+    const allItems = await SupervisorEvaluationItem.findAll({ attributes: ['id','evaluationId','section','indicator','rating'] });
 
     // Get unique item sections/indicators for columns (e.g., I, II, III, IV, V)
     const itemLabels = [];
