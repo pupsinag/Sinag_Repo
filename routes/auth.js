@@ -9,6 +9,7 @@ const consentController = require('../controllers/consentController');
 const companyDashboardController = require('../controllers/companyDashboardController');
 
 const authMiddleware = require('../middleware/authMiddleware');
+const { ensureDBConnection } = require('../middleware/dbHealthCheck');
 const upload = require('../middleware/upload');
 
 console.log('✅ Auth routes loaded');
@@ -20,13 +21,15 @@ router.get('/test', (req, res) => {
   res.json({ message: 'auth route working' });
 });
 
-router.post('/signup', authController.signup);
-router.post('/login', authController.login);
+// Apply DB health check to critical endpoints
+router.post('/signup', ensureDBConnection, authController.signup);
+router.post('/login', ensureDBConnection, authController.login);
 
 /* =========================
    PROTECTED ROUTES
 ========================= */
 router.use(authMiddleware(['superadmin', 'coordinator', 'adviser', 'intern', 'company']));
+router.use(ensureDBConnection);
 
 /* =========================
    USER PROFILE

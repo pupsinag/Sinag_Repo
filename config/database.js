@@ -19,6 +19,19 @@ const sequelize = new Sequelize(
     port: dbPort,
     dialect: 'mysql',
     logging: console.log, // keep for now
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000, // close idle connections after 10 seconds
+      evict: 15000 // validate connections every 15 seconds
+    },
+    dialectOptions: {
+      connectTimeout: 60000,
+      supportBigNumbers: true,
+      bigNumberStrings: true,
+      dateStrings: true
+    }
   }
 );
 

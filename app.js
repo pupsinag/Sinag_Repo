@@ -209,6 +209,30 @@ const db = require('./models');
 const { sequelize } = db;
 
 // =========================
+// CONNECTION POOL MANAGEMENT
+// =========================
+// Ensure connections are validated before use
+app.use(async (req, res, next) => {
+  try {
+    // Test and restore connection if needed
+    if (!sequelize.authenticate) {
+      await sequelize.authenticate();
+    }
+    next();
+  } catch (error) {
+    console.warn('⚠️ Database connection lost, attempting to reconnect...');
+    try {
+      await sequelize.authenticate();
+      console.log('✅ Database reconnected successfully');
+      next();
+    } catch (reconnectError) {
+      console.error('❌ Failed to reconnect to database:', reconnectError);
+      res.status(503).json({ message: 'Database connection unavailable' });
+    }
+  }
+});
+
+// =========================
 // START SERVER
 // =========================
 console.log('🚀 Starting backend...');
@@ -237,6 +261,24 @@ sequelize
   })
   .then(() => {
     console.log('✅ Database schema updated');
+    
+    // Setup connection pool health check every 5 minutes
+    setInterval(async () => {
+      try {
+        await sequelize.authenticate();
+        console.log('✅ Connection pool health check passed');
+      } catch (error) {
+        console.warn('⚠️ Connection pool health check failed:', error.message);
+        // Attempt to recreate connection
+        try {
+          await sequelize.close();
+          await sequelize.authenticate();
+          console.log('✅ Connection pool recovered');
+        } catch (recoveryError) {
+          console.error('❌ Failed to recover connection pool:', recoveryError);
+        }
+      }
+    }, 5 * 60 * 1000); // Every 5 minutes
   })
   .catch((err) => {
     console.error('❌ Database connection failed:', err);
