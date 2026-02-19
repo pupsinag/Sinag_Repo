@@ -148,19 +148,34 @@ exports.getDailyLogs = async (req, res) => {
       where: { intern_id: intern.id },
       order: [['log_date', 'DESC']],
     }).catch(async (err) => {
-      // If column doesn't exist yet, use raw query without it
+      // If new columns don't exist yet, use raw query mapping old columns to new ones
       if (err.message.includes("Unknown column")) {
-        console.warn('⚠️ Column not found, using fallback query');
+        console.warn('⚠️ Column not found, using legacy schema fallback query');
         const sequelize = require('../config/database');
         const { QueryTypes } = require('sequelize');
         const rawLogs = await sequelize.query(
-          `SELECT id, intern_id, log_date, time_in, time_out, total_hours, 
-                  tasks_accomplished, skills_enhanced, learning_applied, photo_path, 
-                  supervisor_status, adviser_status, supervisor_comment, adviser_comment,
-                  supervisor_approved_at, adviser_approved_at, createdAt, updatedAt
+          `SELECT 
+            id, 
+            intern_id, 
+            COALESCE(logDate, DATE(date), CURDATE()) as log_date,
+            '08:00:00' as time_in,
+            TIME_ADD('08:00:00', INTERVAL CAST(IFNULL(hours_worked, 8) AS SIGNED) HOUR) as time_out,
+            COALESCE(hours_worked, 0) as total_hours,
+            COALESCE(task_description, '') as tasks_accomplished,
+            COALESCE(notes, '') as skills_enhanced,
+            NULL as learning_applied,
+            JSON_ARRAY(photos) as photo_path,
+            COALESCE(status, 'Pending') as supervisor_status,
+            'Pending' as adviser_status,
+            COALESCE(approval_remarks, '') as supervisor_comment,
+            NULL as adviser_comment,
+            NULL as supervisor_approved_at,
+            NULL as adviser_approved_at,
+            createdAt,
+            updatedAt
            FROM intern_daily_logs 
            WHERE intern_id = ?
-           ORDER BY log_date DESC`,
+           ORDER BY COALESCE(logDate, DATE(date), CURDATE()) DESC`,
           {
             replacements: [intern.id],
             type: QueryTypes.SELECT,
@@ -240,19 +255,34 @@ exports.getInternDailyLogsForAdviser = async (req, res) => {
         where: { intern_id: internId },
         order: [['log_date', 'DESC']],
       }).catch(async (err) => {
-        // If column doesn't exist yet, use raw query without it
+        // If new columns don't exist yet, use raw query mapping old columns to new ones
         if (err.message.includes("Unknown column")) {
-          console.warn('⚠️ Column not found, using fallback query');
+          console.warn('⚠️ Column not found, using legacy schema fallback query');
           const sequelize = require('../config/database');
           const { QueryTypes } = require('sequelize');
           const rawLogs = await sequelize.query(
-            `SELECT id, intern_id, log_date, time_in, time_out, total_hours, 
-                    tasks_accomplished, skills_enhanced, learning_applied, photo_path, 
-                    supervisor_status, adviser_status, supervisor_comment, adviser_comment,
-                    supervisor_approved_at, adviser_approved_at, createdAt, updatedAt
+            `SELECT 
+              id, 
+              intern_id, 
+              COALESCE(logDate, DATE(date), CURDATE()) as log_date,
+              '08:00:00' as time_in,
+              TIME_ADD('08:00:00', INTERVAL CAST(IFNULL(hours_worked, 8) AS SIGNED) HOUR) as time_out,
+              COALESCE(hours_worked, 0) as total_hours,
+              COALESCE(task_description, '') as tasks_accomplished,
+              COALESCE(notes, '') as skills_enhanced,
+              NULL as learning_applied,
+              JSON_ARRAY(photos) as photo_path,
+              COALESCE(status, 'Pending') as supervisor_status,
+              'Pending' as adviser_status,
+              COALESCE(approval_remarks, '') as supervisor_comment,
+              NULL as adviser_comment,
+              NULL as supervisor_approved_at,
+              NULL as adviser_approved_at,
+              createdAt,
+              updatedAt
              FROM intern_daily_logs 
              WHERE intern_id = ?
-             ORDER BY log_date DESC`,
+             ORDER BY COALESCE(logDate, DATE(date), CURDATE()) DESC`,
             {
               replacements: [internId],
               type: QueryTypes.SELECT,
@@ -452,19 +482,34 @@ exports.getCompanyInternDailyLogs = async (req, res) => {
       where: { intern_id: internId },
       order: [['log_date', 'DESC']],
     }).catch(async (err) => {
-      // If column doesn't exist yet, use raw query without it
+      // If new columns don't exist yet, use raw query mapping old columns to new ones
       if (err.message.includes("Unknown column")) {
-        console.warn('⚠️ Column not found, using fallback query');
+        console.warn('⚠️ Column not found, using legacy schema fallback query');
         const sequelize = require('../config/database');
         const { QueryTypes } = require('sequelize');
         const rawLogs = await sequelize.query(
-          `SELECT id, intern_id, log_date, time_in, time_out, total_hours, 
-                  tasks_accomplished, skills_enhanced, learning_applied, photo_path, 
-                  supervisor_status, adviser_status, supervisor_comment, adviser_comment,
-                  supervisor_approved_at, adviser_approved_at, createdAt, updatedAt
+          `SELECT 
+            id, 
+            intern_id, 
+            COALESCE(logDate, DATE(date), CURDATE()) as log_date,
+            '08:00:00' as time_in,
+            TIME_ADD('08:00:00', INTERVAL CAST(IFNULL(hours_worked, 8) AS SIGNED) HOUR) as time_out,
+            COALESCE(hours_worked, 0) as total_hours,
+            COALESCE(task_description, '') as tasks_accomplished,
+            COALESCE(notes, '') as skills_enhanced,
+            NULL as learning_applied,
+            JSON_ARRAY(photos) as photo_path,
+            COALESCE(status, 'Pending') as supervisor_status,
+            'Pending' as adviser_status,
+            COALESCE(approval_remarks, '') as supervisor_comment,
+            NULL as adviser_comment,
+            NULL as supervisor_approved_at,
+            NULL as adviser_approved_at,
+            createdAt,
+            updatedAt
            FROM intern_daily_logs 
            WHERE intern_id = ?
-           ORDER BY log_date DESC`,
+           ORDER BY COALESCE(logDate, DATE(date), CURDATE()) DESC`,
           {
             replacements: [internId],
             type: QueryTypes.SELECT,
