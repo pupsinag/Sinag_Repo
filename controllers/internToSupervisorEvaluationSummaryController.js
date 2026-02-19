@@ -126,25 +126,77 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
     // Fetch all evaluations (no program filter)
     console.log('[generateInternToSupervisorEvaluationSummary] Fetching supervisor evaluations');
     
-    const evaluations = await SupervisorEvaluation.findAll({
-      include: [
-        {
-          model: Intern,
-          as: 'intern',
-          include: [
-            { model: User, as: 'User' },
-            { model: require('../models').Supervisor, as: 'Supervisor' }, // <-- Capital S
-          ],
-        },
-        {
-          model: Company,
-          as: 'supervisorCompany',
-        },
-      ],
-      order: [[{ model: Intern, as: 'intern' }, 'id', 'ASC']],
+    // Step 1: Get base evaluations
+    const baseEvaluations = await SupervisorEvaluation.findAll({
+      attributes: ['id', 'intern_id', 'company_id', 'rating', 'date'],
+      raw: true,
     });
+    console.log(`[generateInternToSupervisorEvaluationSummary] Step 1: Found ${baseEvaluations.length} base evaluations`);
+
+    let evaluations = baseEvaluations;
     
-    console.log(`[generateInternToSupervisorEvaluationSummary] Found ${evaluations.length} evaluations`);
+    if (baseEvaluations.length > 0) {
+      // Step 2: Get Intern and related data
+      const internIds = [...new Set(baseEvaluations.map(e => e.intern_id).filter(Boolean))];
+      const interns = await Intern.findAll({
+        where: { id: internIds },
+        attributes: ['id', 'user_id', 'supervisor_id'],
+        raw: true,
+      });
+      const internMap = Object.fromEntries(interns.map(i => [i.id, i]));
+
+      // Step 2b: Get User data
+      const userIds = [...new Set(interns.map(i => i.user_id).filter(Boolean))];
+      const users = await User.findAll({
+        where: { id: userIds },
+        attributes: ['id', 'firstName', 'lastName'],
+        raw: true,
+      });
+      const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+      // Step 2c: Get Supervisor data
+      const supervisorIds = [...new Set(interns.map(i => i.supervisor_id).filter(Boolean))];
+      const supervisors = await require('../models').Supervisor.findAll({
+        where: { id: supervisorIds },
+        attributes: ['id', 'name'],
+        raw: true,
+      });
+      const supervisorMap = Object.fromEntries(supervisors.map(s => [s.id, s]));
+      console.log(`[generateInternToSupervisorEvaluationSummary] Step 2: Fetched ${interns.length} interns, ${users.length} users, ${supervisors.length} supervisors`);
+
+      // Step 3: Get Company data
+      const companyIds = [...new Set(baseEvaluations.map(e => e.company_id).filter(Boolean))];
+      const companies = await Company.findAll({
+        where: { id: companyIds },
+        attributes: ['id', 'name'],
+        raw: true,
+      });
+      const companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
+      console.log(`[generateInternToSupervisorEvaluationSummary] Step 3: Fetched ${companies.length} companies`);
+
+      // Step 4: Enrich evaluations with related data
+      evaluations = baseEvaluations.map(eval => {
+        const intern = internMap[eval.intern_id] || {};
+        const user = userMap[intern.user_id] || {};
+        const supervisor = supervisorMap[intern.supervisor_id] || {};
+        const company = companyMap[eval.company_id] || {};
+        
+        return {
+          ...eval,
+          intern: {
+            id: intern.id,
+            user_id: intern.user_id,
+            supervisor_id: intern.supervisor_id,
+            User: user,
+            Supervisor: supervisor,
+          },
+          supervisorCompany: company,
+        };
+      });
+      console.log(`[generateInternToSupervisorEvaluationSummary] Step 4: Enriched ${evaluations.length} evaluations`);
+    }
+    
+    console.log(`[generateInternToSupervisorEvaluationSummary] Total evaluations: ${evaluations.length}`);
 
     // Fetch all SupervisorEvaluationItems
     const SupervisorEvaluationItem = require('../models')['SupervisorEvaluationItem'];

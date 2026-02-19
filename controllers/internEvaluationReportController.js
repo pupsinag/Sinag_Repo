@@ -43,23 +43,92 @@ exports.generateInternEvaluationReport = async (req, res) => {
     
     console.log('[generateInternEvaluationReport] Fetching interns with where clause:', JSON.stringify(whereClause));
 
-    const interns = await Intern.findAll({
+    // Step 1: Get base intern data
+    let baseInterns = await Intern.findAll({
       where: whereClause,
-      include: [
-        { model: User, as: 'User', attributes: ['firstName', 'lastName', 'email'] },
-        { model: Company, as: 'company', attributes: ['name'] },
-        { model: Supervisor, as: 'Supervisor', attributes: ['name'] },
-        {
-          model: InternEvaluation,
-          as: 'Evaluations',
-          attributes: ['id', 'intern_id', 'internName', 'section', 'hteName', 'jobDescription', 'totalScore', 'date'],
-          include: [{ model: InternEvaluationItem, as: 'items', attributes: ['category', 'score'] }],
-        },
-      ],
-      order: [[{ model: User, as: 'User' }, 'lastName', 'ASC']],
+      attributes: ['id', 'user_id', 'company_id', 'supervisor_id'],
+      raw: true,
     });
+    console.log(`[generateInternEvaluationReport] Step 1: Found ${baseInterns.length} base interns`);
+
+    if (baseInterns.length > 0) {
+      // Step 2: Get User data
+      const userIds = [...new Set(baseInterns.map(i => i.user_id).filter(Boolean))];
+      const users = await User.findAll({
+        where: { id: userIds },
+        attributes: ['id', 'firstName', 'lastName', 'email'],
+        raw: true,
+      });
+      const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+      console.log(`[generateInternEvaluationReport] Step 2: Fetched ${users.length} users`);
+
+      // Step 3: Get Company and Supervisor data
+      const companyIds = [...new Set(baseInterns.map(i => i.company_id).filter(Boolean))];
+      const supervisorIds = [...new Set(baseInterns.map(i => i.supervisor_id).filter(Boolean))];
+      
+      const companies = await Company.findAll({
+        where: { id: companyIds },
+        attributes: ['id', 'name'],
+        raw: true,
+      });
+      const companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
+      
+      const supervisors = await Supervisor.findAll({
+        where: { id: supervisorIds },
+        attributes: ['id', 'name'],
+        raw: true,
+      });
+      const supervisorMap = Object.fromEntries(supervisors.map(s => [s.id, s]));
+      console.log(`[generateInternEvaluationReport] Step 3: Fetched ${companies.length} companies and ${supervisors.length} supervisors`);
+
+      // Step 4: Get Evaluations and Evaluation Items
+      const internIds = baseInterns.map(i => i.id);
+      const evaluations = await InternEvaluation.findAll({
+        where: { intern_id: internIds },
+        attributes: ['id', 'intern_id', 'internName', 'section', 'hteName', 'jobDescription', 'totalScore', 'date'],
+        raw: true,
+      });
+      const evalIds = evaluations.map(e => e.id);
+
+      const evaluationItems = await InternEvaluationItem.findAll({
+        where: { evaluation_id: evalIds },
+        attributes: ['id', 'evaluation_id', 'category', 'score'],
+        raw: true,
+      });
+      
+      // Map evaluations to interns and attach items
+      const evaluationsByIntern = {};
+      evaluations.forEach(eval => {
+        const evalWithItems = {
+          ...eval,
+          items: evaluationItems.filter(item => item.evaluation_id === eval.id),
+        };
+        if (!evaluationsByIntern[eval.intern_id]) {
+          evaluationsByIntern[eval.intern_id] = [];
+        }
+        evaluationsByIntern[eval.intern_id].push(evalWithItems);
+      });
+      console.log(`[generateInternEvaluationReport] Step 4: Fetched ${evaluations.length} evaluations with ${evaluationItems.length} items`);
+
+      // Enrich interns with related data
+      const interns = baseInterns.map(intern => ({
+        ...intern,
+        User: userMap[intern.user_id] || {},
+        company: companyMap[intern.company_id] || {},
+        Supervisor: supervisorMap[intern.supervisor_id] || {},
+        Evaluations: evaluationsByIntern[intern.id] || [],
+      }));
+
+      // Sort by last name
+      interns.sort((a, b) => {
+        const nameA = (a.User?.lastName || '').toLowerCase();
+        const nameB = (b.User?.lastName || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+      console.log('[generateInternEvaluationReport] Interns sorted by last name');
+    }
     
-    console.log(`[generateInternEvaluationReport] Found ${interns.length} interns`);
+    console.log(`[generateInternEvaluationReport] Total enriched interns: ${baseInterns.length}`);
 
     /* =============================
        PDF SETUP
