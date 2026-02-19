@@ -269,8 +269,69 @@ async function deleteInternDoc(req, res) {
   }
 }
 
+/* =========================
+   DOWNLOAD / VIEW DOCUMENT
+========================= */
+// GET /api/auth/intern-docs/download/:docId
+async function downloadInternDoc(req, res) {
+  try {
+    const { docId } = req.params;
+
+    console.log('[downloadInternDoc] Requesting doc ID:', docId, 'by user:', req.user.id);
+
+    // Find the document
+    const doc = await InternDocuments.findOne({
+      where: { id: docId },
+      include: [
+        {
+          model: require('../models').Intern,
+          where: { user_id: req.user.id }, // Ensure user can only download own documents
+          required: true,
+        },
+      ],
+    });
+
+    if (!doc) {
+      console.warn('[downloadInternDoc] Document not found or unauthorized:', docId);
+      return res.status(404).json({ message: 'Document not found or access denied' });
+    }
+
+    const filePath = path.join(__dirname, '..', 'uploads', doc.file_path);
+
+    console.log('[downloadInternDoc] File path:', filePath);
+    console.log('[downloadInternDoc] File exists:', fs.existsSync(filePath));
+
+    if (!fs.existsSync(filePath)) {
+      console.error('[downloadInternDoc] File does not exist on disk:', filePath);
+      return res.status(404).json({ message: 'File not found on server' });
+    }
+
+    // Set headers for download
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
+
+    // Stream the file
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+
+    fileStream.on('error', (err) => {
+      console.error('[downloadInternDoc] Stream error:', err.message);
+      res.status(500).json({ message: 'Error downloading file' });
+    });
+
+    console.log('✅ Document download started:', doc.file_name);
+  } catch (err) {
+    console.error('❌ DOWNLOAD INTERN DOC ERROR:', err.message);
+    return res.status(500).json({
+      message: 'Failed to download document',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
+  }
+}
+
 module.exports = {
   uploadInternDoc,
   getInternDocuments,
   deleteInternDoc,
+  downloadInternDoc,
 };

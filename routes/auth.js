@@ -117,6 +117,9 @@ router.post(
 // INTERN – view own checklist
 router.get('/intern-docs/me', authMiddleware(['intern']), internDocsController.getInternDocuments);
 
+// INTERN – download / view document
+router.get('/intern-docs/download/:docId', authMiddleware(['intern']), internDocsController.downloadInternDoc);
+
 // INTERN – delete document
 router.delete('/intern-docs/:column', authMiddleware(['intern']), internDocsController.deleteInternDoc);
 
