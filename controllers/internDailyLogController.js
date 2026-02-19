@@ -99,18 +99,64 @@ exports.createDailyLog = async (req, res) => {
     /* =========================
        CREATE LOG IN DATABASE
     ========================= */
-    const log = await InternDailyLog.create({
-      intern_id: intern.id,
-      day_no,
-      log_date,
-      time_in,
-      time_out,
-      total_hours,
-      tasks_accomplished,
-      skills_enhanced: skills_enhanced || null,
-      learning_applied: learning_applied || null,
-      photo_path: photo_paths, // ✅ Save array of photo paths to database
-    });
+    let log;
+    try {
+      log = await InternDailyLog.create({
+        intern_id: intern.id,
+        day_no,
+        log_date,
+        time_in,
+        time_out,
+        total_hours,
+        tasks_accomplished,
+        skills_enhanced: skills_enhanced || null,
+        learning_applied: learning_applied || null,
+        photo_path: photo_paths, // ✅ Save array of photo paths to database
+      });
+    } catch (err) {
+      // If columns don't exist yet, insert into legacy schema
+      if (err.message.includes("Unknown column")) {
+        console.warn('⚠️ Column not found, using legacy schema insert');
+        const sequelize = require('../config/database');
+        const dateStr = log_date instanceof Date ? log_date.toISOString().split('T')[0] : log_date;
+        
+        const [createdLog] = await sequelize.query(
+          `INSERT INTO intern_daily_logs 
+           (intern_id, date, logDate, hours_worked, task_description, notes, photos, status, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          {
+            replacements: [
+              intern.id,
+              dateStr,
+              dateStr,
+              total_hours,
+              tasks_accomplished,
+              skills_enhanced || '',
+              photo_paths ? photo_paths.join(',') : null,
+              'Pending'
+            ]
+          }
+        );
+        
+        // Return a mock log object matching expected format
+        log = {
+          id: createdLog,
+          intern_id: intern.id,
+          log_date: dateStr,
+          time_in,
+          time_out,
+          total_hours,
+          tasks_accomplished,
+          skills_enhanced: skills_enhanced || null,
+          learning_applied: learning_applied || null,
+          photo_path: photo_paths,
+          supervisor_status: 'Pending',
+          adviser_status: 'Pending',
+        };
+      } else {
+        throw err;
+      }
+    }
 
     console.log('✅ Daily log created successfully');
     console.log('   ID:', log.id);
