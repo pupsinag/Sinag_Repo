@@ -222,7 +222,7 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
         y = doc.page.margins.top;
       }
 
-      const internData = intern.get({ plain: true });
+      const internData = intern;
       const docsArray = internData.InternDocuments || [];
       const docs = docsArray.length > 0 ? docsArray[0] : {};
       const user = internData.User;
