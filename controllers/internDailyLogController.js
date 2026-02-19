@@ -169,7 +169,7 @@ exports.createDailyLog = async (req, res) => {
               total_hours,
               tasks_accomplished,
               skills_enhanced || '',
-              photo_paths ? photo_paths.join(',') : '',
+              photo_paths && photo_paths.length > 0 ? photo_paths[0] : '', // Store only first photo to avoid constraint violation
               'Pending'
             ],
             type: QueryTypes.INSERT
