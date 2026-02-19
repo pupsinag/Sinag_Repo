@@ -164,11 +164,7 @@ const internDailyLogRoutes = loadRoute(
   path.join(__dirname, 'routes', 'internDailyLogRoutes.js'),
   'internDailyLogRoutes',
 );
-if (internDailyLogRoutes) {
-  app.use('/api', internDailyLogRoutes);
-  // Startup confirmation for troubleshooting missing-route 404s
-  console.log('[ROUTE] /api (internDailyLogRoutes) loaded and registered');
-}
+if (internDailyLogRoutes) app.use('/api', internDailyLogRoutes);
 
 // =========================
 // SERVE FRONTEND (PRODUCTION)
