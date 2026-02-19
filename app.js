@@ -164,7 +164,12 @@ const internDailyLogRoutes = loadRoute(
   path.join(__dirname, 'routes', 'internDailyLogRoutes.js'),
   'internDailyLogRoutes',
 );
-if (internDailyLogRoutes) app.use('/api', internDailyLogRoutes);
+if (internDailyLogRoutes) {
+  app.use('/api', internDailyLogRoutes);
+  console.log('[ROUTE] /api - internDailyLogRoutes loaded and registered');
+} else {
+  console.warn('[ROUTE] /api - internDailyLogRoutes NOT loaded');
+}
 
 // =========================
 // SERVE FRONTEND (PRODUCTION)
