@@ -12,7 +12,6 @@ module.exports = (sequelize, DataTypes) => {
       intern_id: {
         type: DataTypes.INTEGER.UNSIGNED,
         allowNull: false,
-        unique: true,
         references: {
           model: 'interns',
           key: 'id',
@@ -21,21 +20,21 @@ module.exports = (sequelize, DataTypes) => {
         onUpdate: 'CASCADE',
       },
 
-      consent_form: DataTypes.STRING,
-      notarized_agreement: DataTypes.STRING,
-      resume: DataTypes.STRING,
-      cor: DataTypes.STRING,
-      insurance: DataTypes.STRING,
-      medical_cert: DataTypes.STRING,
-
-      uploaded_at: {
+      document_type: DataTypes.STRING,
+      file_name: DataTypes.STRING,
+      file_path: DataTypes.STRING,
+      
+      uploaded_date: {
         type: DataTypes.DATE,
         defaultValue: DataTypes.NOW,
       },
+
+      status: DataTypes.STRING,
+      remarks: DataTypes.TEXT,
     },
     {
       tableName: 'intern_documents',
-      timestamps: false,
+      timestamps: true,
       underscored: true,
     },
   );

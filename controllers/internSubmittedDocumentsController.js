@@ -178,6 +178,17 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
     doc.rect(startX, y, pageWidth, 26).fill('#800000');
     doc.fillColor('white').fontSize(7).font('Helvetica-Bold');
 
+    // Define document types to check
+    const documentTypes = [
+      'notarized_agreement',
+      'medical_cert',
+      'insurance',
+      'moa',
+      'cor',
+      'consent_form',
+      'resume'
+    ];
+
     const cols = {
       no: { x: startX + 5, w: 30 },
       name: { x: startX + 40, w: 210 },
@@ -220,14 +231,21 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
 
       const internData = intern;
       const docsArray = internData.InternDocuments || [];
-      const docs = docsArray.length > 0 ? docsArray[0] : {};
       const user = internData.User;
       const company = internData.company;
+
+      // Build a map of document types for this intern
+      const docMap = {};
+      docsArray.forEach(doc => {
+        if (doc.document_type) {
+          docMap[doc.document_type.toLowerCase()] = doc.file_path;
+        }
+      });
 
       // DEBUG: Log document data
       console.log(`[DEBUG] Intern: ${user?.firstName} ${user?.lastName}`);
       console.log(`[DEBUG] DocsArray length: ${docsArray.length}`);
-      console.log(`[DEBUG] Docs object:`, docs);
+      console.log(`[DEBUG] DocMap:`, docMap);
 
       if (!user) return;
 
@@ -237,13 +255,13 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       doc.text(`${user.lastName || 'N/A'}, ${user.firstName || 'N/A'}`.trim(), cols.name.x, y + 5, {
         width: cols.name.w,
       });
-      doc.text(mark(docs.notarized_agreement), cols.nc.x, y + 5, { width: cols.nc.w, align: 'center' });
-      doc.text(mark(docs.medical_cert), cols.med.x, y + 5, { width: cols.med.w, align: 'center' });
-      doc.text(mark(docs.insurance), cols.ins.x, y + 5, { width: cols.ins.w, align: 'center' });
+      doc.text(mark(docMap['notarized_agreement']), cols.nc.x, y + 5, { width: cols.nc.w, align: 'center' });
+      doc.text(mark(docMap['medical_cert']), cols.med.x, y + 5, { width: cols.med.w, align: 'center' });
+      doc.text(mark(docMap['insurance']), cols.ins.x, y + 5, { width: cols.ins.w, align: 'center' });
       doc.text(mark(company?.moaFile), cols.moa.x, y + 5, { width: cols.moa.w, align: 'center' });
-      doc.text(mark(docs.cor), cols.cor.x, y + 5, { width: cols.cor.w, align: 'center' });
-      doc.text(mark(docs.consent_form), cols.ia.x, y + 5, { width: cols.ia.w, align: 'center' });
-      doc.text(mark(docs.resume), cols.res.x, y + 5, { width: cols.res.w, align: 'center' });
+      doc.text(mark(docMap['cor']), cols.cor.x, y + 5, { width: cols.cor.w, align: 'center' });
+      doc.text(mark(docMap['consent_form']), cols.ia.x, y + 5, { width: cols.ia.w, align: 'center' });
+      doc.text(mark(docMap['resume']), cols.res.x, y + 5, { width: cols.res.w, align: 'center' });
 
       y += 18;
     });

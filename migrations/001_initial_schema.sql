@@ -167,15 +167,15 @@ CREATE TABLE IF NOT EXISTS intern_daily_logs (
 CREATE TABLE IF NOT EXISTS intern_documents (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   intern_id INTEGER NOT NULL,
-  consent_form TEXT,
-  notarized_agreement TEXT,
-  resume TEXT,
-  cor TEXT,
-  insurance TEXT,
-  medical_cert TEXT,
-  uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (intern_id) REFERENCES interns(id) ON DELETE CASCADE ON UPDATE CASCADE,
-  UNIQUE (intern_id)
+  document_type VARCHAR(100),
+  file_name VARCHAR(255),
+  file_path VARCHAR(500),
+  uploaded_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  status VARCHAR(50),
+  remarks TEXT,
+  createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (intern_id) REFERENCES interns(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- Intern Evaluation Items table
