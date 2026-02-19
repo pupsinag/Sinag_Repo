@@ -74,17 +74,34 @@ exports.getMyCompany = async (req, res) => {
 ================================================= */
 exports.getInternsForAdviser = async (req, res) => {
   try {
+    const userRole = req.user.role ? req.user.role.toLowerCase() : '';
+    console.log('[getInternsForAdviser] User role:', userRole, 'User ID:', req.user.id);
+
+    let whereCondition = {};
+
+    // 🟢 COORDINATOR/SUPERADMIN: see ALL interns
+    if (userRole === 'coordinator' || userRole === 'superadmin') {
+      console.log('[getInternsForAdviser] Fetching ALL interns (coordinator/admin)');
+      whereCondition = {};
+    }
+    // 🟢 ADVISER: see only their interns
+    else if (userRole === 'adviser') {
+      console.log('[getInternsForAdviser] Fetching interns for adviser:', req.user.id);
+      whereCondition = { adviser_id: req.user.id };
+    }
+
     const interns = await Intern.findAll({
+      where: whereCondition,
       include: [
         {
           model: User,
           as: 'User',
-          attributes: ['studentId', 'lastName', 'firstName', 'mi', 'email', 'program'],
+          attributes: ['id', 'studentId', 'lastName', 'firstName', 'mi', 'email', 'program'],
         },
         {
           model: Company,
           as: 'company',
-          attributes: { exclude: ['password'] }, // ✅ Include all fields including supervisorName
+          attributes: { exclude: ['password'] },
           required: false,
         },
         {
@@ -100,11 +117,13 @@ exports.getInternsForAdviser = async (req, res) => {
         },
       ],
       order: [[{ model: User, as: 'User' }, 'lastName', 'ASC']],
+      raw: false,
     });
 
+    console.log('[getInternsForAdviser] Found', interns.length, 'interns');
     res.json(interns);
   } catch (err) {
     console.error('❌ GET INTERNS FOR ADVISER ERROR:', err);
-    res.status(500).json({ message: 'Failed to fetch interns' });
+    res.status(500).json({ message: 'Failed to fetch interns', error: err.message });
   }
 };
