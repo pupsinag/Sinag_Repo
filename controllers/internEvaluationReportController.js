@@ -46,23 +46,42 @@ exports.generateInternEvaluationReport = async (req, res) => {
     let interns = []; // Declare outside if block
     
     // Step 1: Get base intern data
+    // Detect whether the `user_id` column exists in the `interns` table (production schema may differ).
+    const internTableDesc = await sequelize.getQueryInterface().describeTable('interns').catch(() => null);
+    const hasUserIdColumn = !!(internTableDesc && (internTableDesc.user_id || internTableDesc.userId));
+    if (!hasUserIdColumn) {
+      console.warn('[generateInternEvaluationReport] ⚠️ interns.user_id column not present in DB — user names will be shown as N/A');
+    }
+    const internAttributes = ['id', 'company_id', 'supervisor_id', 'program', 'year_section'];
+    if (hasUserIdColumn) internAttributes.splice(1, 0, 'user_id'); // keep user_id second for easier mapping
+
     const baseInterns = await Intern.findAll({
-      attributes: ['id', 'user_id', 'company_id', 'supervisor_id', 'program', 'year_section'],
+      attributes: internAttributes,
       where: whereClause,
       raw: true,
     });
-    console.log(`[generateInternEvaluationReport] Step 1: Found ${baseInterns.length} base interns`);
+    console.log(`[generateInternEvaluationReport] Step 1: Found ${baseInterns.length} base interns (hasUserId=${hasUserIdColumn})`);
+
+    let userMap = {};
+    if (baseInterns.length > 0 && hasUserIdColumn) {
+      // Step 2: Get User data (only if interns.user_id exists)
+      const userIds = [...new Set(baseInterns.map(i => i.user_id).filter(Boolean))];
+      if (userIds.length > 0) {
+        const users = await User.findAll({
+          attributes: ['id', 'firstName', 'lastName'],
+          where: { id: userIds },
+          raw: true,
+        });
+        userMap = Object.fromEntries(users.map(u => [u.id, u]));
+        console.log(`[generateInternEvaluationReport] Step 2: Fetched ${users.length} users`);
+      } else {
+        console.log('[generateInternEvaluationReport] Step 2: No user_ids found on interns; skipping user lookup');
+      }
+    } else if (baseInterns.length > 0) {
+      console.log('[generateInternEvaluationReport] Step 2: Skipping user lookup because interns.user_id is not present in DB');
+    }
 
     if (baseInterns.length > 0) {
-      // Step 2: Get User data
-      const userIds = [...new Set(baseInterns.map(i => i.user_id).filter(Boolean))];
-      const users = await User.findAll({
-        attributes: ['id', 'firstName', 'lastName'],
-        where: { id: userIds },
-        raw: true,
-      });
-      const userMap = Object.fromEntries(users.map(u => [u.id, u]));
-      console.log(`[generateInternEvaluationReport] Step 2: Fetched ${users.length} users`);
 
       // Step 3: Get Company and Supervisor data
       const companyIds = [...new Set(baseInterns.map(i => i.company_id).filter(Boolean))];
@@ -257,8 +276,9 @@ exports.generateInternEvaluationReport = async (req, res) => {
         y += 26;
         doc.fillColor('black').font('Helvetica').fontSize(9);
       }
-      // Defensive: skip if no User
-      if (!intern.User) return;
+      // Defensive: if no User metadata is available, still render the row with 'N/A' for the name.
+      // Production DBs may lack interns.user_id; do not skip the entire row.
+      // (previous behavior: `if (!intern.User) return;` - removed)
       const evaluation = Array.isArray(intern.Evaluations) ? intern.Evaluations[0] : null;
       const items = evaluation && Array.isArray(evaluation.items) ? evaluation.items : [];
       const categoryScores = {
