@@ -114,13 +114,16 @@ exports.createDailyLog = async (req, res) => {
         photo_path: photo_paths, // ✅ Save array of photo paths to database
       });
     } catch (err) {
-      // If columns don't exist yet, insert into legacy schema
-      if (err.message.includes("Unknown column")) {
-        console.warn('⚠️ Column not found, using legacy schema insert');
+      // If new schema fails, try legacy schema insert
+      console.warn('⚠️ New schema insert failed, attempting legacy schema insert');
+      console.warn('   Error:', err.message);
+      
+      try {
         const sequelize = require('../config/database');
+        const { QueryTypes } = require('sequelize');
         const dateStr = log_date instanceof Date ? log_date.toISOString().split('T')[0] : log_date;
         
-        const [createdLog] = await sequelize.query(
+        const result = await sequelize.query(
           `INSERT INTO intern_daily_logs 
            (intern_id, date, logDate, hours_worked, task_description, notes, photos, status, createdAt, updatedAt)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
@@ -132,15 +135,18 @@ exports.createDailyLog = async (req, res) => {
               total_hours,
               tasks_accomplished,
               skills_enhanced || '',
-              photo_paths ? photo_paths.join(',') : null,
+              photo_paths ? photo_paths.join(',') : '',
               'Pending'
-            ]
+            ],
+            type: QueryTypes.INSERT
           }
         );
         
+        console.log('✅ Legacy schema insert successful, ID:', result);
+        
         // Return a mock log object matching expected format
         log = {
-          id: createdLog,
+          id: result,
           intern_id: intern.id,
           log_date: dateStr,
           time_in,
@@ -153,8 +159,11 @@ exports.createDailyLog = async (req, res) => {
           supervisor_status: 'Pending',
           adviser_status: 'Pending',
         };
-      } else {
-        throw err;
+      } catch (legacyErr) {
+        console.error('❌ Both new and legacy schema inserts failed!');
+        console.error('   New schema error:', err.message);
+        console.error('   Legacy schema error:', legacyErr.message);
+        throw legacyErr;
       }
     }
 
@@ -168,7 +177,10 @@ exports.createDailyLog = async (req, res) => {
   } catch (err) {
     console.error('❌ CREATE DAILY LOG ERROR:', err.message);
     console.error('Stack trace:', err.stack);
-    return res.status(500).json({ message: 'Failed to create daily log' });
+    return res.status(500).json({ 
+      message: 'Failed to create daily log',
+      error: err.message // Include detailed error for debugging
+    });
   }
 };
 
