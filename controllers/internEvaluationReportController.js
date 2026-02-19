@@ -43,8 +43,10 @@ exports.generateInternEvaluationReport = async (req, res) => {
     
     console.log('[generateInternEvaluationReport] Fetching interns with where clause:', JSON.stringify(whereClause));
 
+    let interns = []; // Declare outside if block
+    
     // Step 1: Get base intern data
-    let baseInterns = await Intern.findAll({
+    const baseInterns = await Intern.findAll({
       where: whereClause,
       attributes: ['id', 'user_id', 'company_id', 'supervisor_id'],
       raw: true,
@@ -111,7 +113,7 @@ exports.generateInternEvaluationReport = async (req, res) => {
       console.log(`[generateInternEvaluationReport] Step 4: Fetched ${evaluations.length} evaluations with ${evaluationItems.length} items`);
 
       // Enrich interns with related data
-      const interns = baseInterns.map(intern => ({
+      interns = baseInterns.map(intern => ({
         ...intern,
         User: userMap[intern.user_id] || {},
         company: companyMap[intern.company_id] || {},

@@ -50,19 +50,21 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
     
     console.log('[generateInternSubmittedDocuments] Fetching interns with where clause:', JSON.stringify(whereClause));
     
+    let interns = []; // Declare outside if block
+    
     // Step 1: Get base intern data
-    const interns = await Intern.findAll({
+    const baseInterns = await Intern.findAll({
       where: whereClause,
       attributes: ['id', 'user_id', 'company_id'],
       raw: true,
     });
-    console.log(`[generateInternSubmittedDocuments] Step 1: Found ${interns.length} base interns`);
+    console.log(`[generateInternSubmittedDocuments] Step 1: Found ${baseInterns.length} base interns`);
 
-    if (interns.length === 0) {
+    if (baseInterns.length === 0) {
       console.log('[generateInternSubmittedDocuments] No interns found, returning empty list');
     } else {
       // Step 2: Get user data
-      const userIds = [...new Set(interns.map(i => i.user_id).filter(Boolean))];
+      const userIds = [...new Set(baseInterns.map(i => i.user_id).filter(Boolean))];
       const users = await User.findAll({
         where: { id: userIds },
         attributes: ['id', 'firstName', 'lastName'],
@@ -72,7 +74,7 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       console.log(`[generateInternSubmittedDocuments] Step 2: Fetched ${users.length} users`);
 
       // Step 3: Get InternDocuments data
-      const internIds = interns.map(i => i.id);
+      const internIds = baseInterns.map(i => i.id);
       const allDocs = await InternDocuments.findAll({
         where: { intern_id: internIds },
         attributes: ['id', 'intern_id', 'consent_form', 'notarized_agreement', 'resume', 'cor', 'insurance', 'medical_cert'],
@@ -82,7 +84,7 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       console.log(`[generateInternSubmittedDocuments] Step 3: Fetched ${allDocs.length} documents`);
 
       // Step 4: Get Company data
-      const companyIds = [...new Set(interns.map(i => i.company_id).filter(Boolean))];
+      const companyIds = [...new Set(baseInterns.map(i => i.company_id).filter(Boolean))];
       const companies = await Company.findAll({
         where: { id: companyIds },
         attributes: ['id', 'moaFile'],
@@ -92,11 +94,12 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       console.log(`[generateInternSubmittedDocuments] Step 4: Fetched ${companies.length} companies`);
 
       // Enrich interns with related data
-      interns.forEach(intern => {
-        intern.User = userMap[intern.user_id] || {};
-        intern.InternDocuments = docsMap[intern.id] || [];
-        intern.company = companyMap[intern.company_id] || {};
-      });
+      interns = baseInterns.map(intern => ({
+        ...intern,
+        User: userMap[intern.user_id] || {},
+        InternDocuments: docsMap[intern.id] || [],
+        company: companyMap[intern.company_id] || {},
+      }));
     }
     
     console.log(`[generateInternSubmittedDocuments] Total enriched interns: ${interns.length}`);

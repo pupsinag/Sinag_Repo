@@ -126,6 +126,8 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
     // Fetch all evaluations (no program filter)
     console.log('[generateInternToSupervisorEvaluationSummary] Fetching supervisor evaluations');
     
+    let evaluations = []; // Declare outside if block
+    
     // Step 1: Get base evaluations
     const baseEvaluations = await SupervisorEvaluation.findAll({
       attributes: ['id', 'intern_id', 'company_id', 'rating', 'date'],
@@ -133,7 +135,7 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
     });
     console.log(`[generateInternToSupervisorEvaluationSummary] Step 1: Found ${baseEvaluations.length} base evaluations`);
 
-    let evaluations = baseEvaluations;
+    evaluations = baseEvaluations;
     
     if (baseEvaluations.length > 0) {
       // Step 2: Get Intern and related data
