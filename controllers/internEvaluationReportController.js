@@ -99,15 +99,15 @@ exports.generateInternEvaluationReport = async (req, res) => {
       
       // Map evaluations to interns and attach items
       const evaluationsByIntern = {};
-      evaluations.forEach(eval => {
-        const evalWithItems = {
-          ...eval,
-          items: evaluationItems.filter(item => item.evaluationId === eval.id),
+      evaluations.forEach(evaluation => {
+        const evaluationWithItems = {
+          ...evaluation,
+          items: evaluationItems.filter(item => item.evaluationId === evaluation.id),
         };
-        if (!evaluationsByIntern[eval.intern_id]) {
-          evaluationsByIntern[eval.intern_id] = [];
+        if (!evaluationsByIntern[evaluation.intern_id]) {
+          evaluationsByIntern[evaluation.intern_id] = [];
         }
-        evaluationsByIntern[eval.intern_id].push(evalWithItems);
+        evaluationsByIntern[evaluation.intern_id].push(evaluationWithItems);
       });
       console.log(`[generateInternEvaluationReport] Step 4: Fetched ${evaluations.length} evaluations with ${evaluationItems.length} items`);
 
