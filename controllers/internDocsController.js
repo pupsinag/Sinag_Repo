@@ -132,8 +132,11 @@ async function uploadInternDoc(req, res) {
       file_path: verifyDoc.file_path,
     });
 
+    // Maintain backward-compatible response shape for the frontend
     return res.json({
       message: 'Document uploaded successfully',
+      column: verifyDoc.document_type,
+      file: verifyDoc.file_path,                        // legacy frontend expects `file`
       document: {
         id: verifyDoc.id,
         document_type: verifyDoc.document_type,
@@ -204,9 +207,19 @@ async function getInternDocuments(req, res) {
       };
     });
 
+    // Build legacy top-level mapping (keeps older frontend working)
+    const legacy = {};
+    const validColumns = ['consent_form','notarized_agreement','resume','cor','insurance','medical_cert'];
+    validColumns.forEach(col => {
+      legacy[col] = docsObject[col] ? docsObject[col].file_path : null;
+    });
+
+    // Also expose MOA at top-level for backward compatibility
+    legacy.MOA = intern.company?.moaFile || null;
+
     return res.json({
       documents: docsObject,
-      MOA: intern.company?.moaFile || null,
+      ...legacy,
     });
   } catch (err) {
     console.error('❌ GET INTERN DOCS ERROR:', err.message);
