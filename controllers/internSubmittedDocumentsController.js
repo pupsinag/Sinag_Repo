@@ -35,18 +35,17 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
     const { Op, fn, col, where } = require('sequelize');
     let whereClause = {
       program,
-      [Op.and]: [],
     };
+    
     if (year_section) {
-      whereClause[Op.and].push(
+      whereClause[Op.and] = [
         where(
           fn('REPLACE', fn('LOWER', col('year_section')), ' ', ''),
           Op.eq,
           year_section.replace(/\s/g, '').toLowerCase(),
         ),
-      );
+      ];
     }
-    if (whereClause[Op.and].length === 0) delete whereClause[Op.and];
     
     console.log('[generateInternSubmittedDocuments] Fetching interns with where clause:', JSON.stringify(whereClause));
     
