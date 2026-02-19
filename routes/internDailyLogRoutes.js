@@ -4,6 +4,12 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+// Lightweight request tracer for this router (helps confirm route hits)
+router.use((req, res, next) => {
+  console.log(`[ROUTE TRACE] internDailyLogRoutes -> ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 const authMiddleware = require('../middleware/authMiddleware');
 const {
   createDailyLog,
