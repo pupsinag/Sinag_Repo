@@ -15,66 +15,6 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'CASCADE',
         onUpdate: 'CASCADE',
       },
-
-      internName: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-
-      section: {
-        type: DataTypes.STRING,
-        allowNull: true,
-      },
-
-      hteName: {
-        type: DataTypes.STRING,
-        allowNull: true,
-      },
-
-      jobDescription: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
-
-      totalScore: {
-        type: DataTypes.FLOAT,
-        allowNull: false,
-      },
-
-      technicalDetails: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
-
-      recommendations: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
-
-      remarks: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
-
-      evaluator: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-
-      designation: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-
-      date: {
-        type: DataTypes.DATEONLY,
-        allowNull: false,
-      },
-
-      conforme: {
-        type: DataTypes.STRING,
-        allowNull: true,
-      },
     },
     {
       tableName: 'intern_evaluations',
