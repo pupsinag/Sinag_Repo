@@ -25,7 +25,7 @@ module.exports = (sequelize, DataTypes) => {
       file_path: DataTypes.STRING,
       
       uploaded_date: {
-        type: DataTypes.DATE,
+        type: DataTypes.DATETIME,
         defaultValue: DataTypes.NOW,
       },
 
