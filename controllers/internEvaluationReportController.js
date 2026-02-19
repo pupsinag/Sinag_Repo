@@ -11,6 +11,9 @@ exports.generateInternEvaluationReport = async (req, res) => {
 
   try {
     const { program, year_section } = req.body;
+    console.log('\n[generateInternEvaluationReport] ===== START =====');
+    console.log('[generateInternEvaluationReport] Program:', program, 'Year:', year_section);
+    
     if (!program) {
       return res.status(400).json({ message: 'Program is required' });
     }
@@ -26,6 +29,8 @@ exports.generateInternEvaluationReport = async (req, res) => {
     if (year_section) {
       whereClause.year_section = year_section;
     }
+    
+    console.log('[generateInternEvaluationReport] Fetching interns with where clause:', JSON.stringify(whereClause));
 
     const interns = await Intern.findAll({
       where: whereClause,
@@ -42,6 +47,8 @@ exports.generateInternEvaluationReport = async (req, res) => {
       ],
       order: [[{ model: User, as: 'User' }, 'lastName', 'ASC']],
     });
+    
+    console.log(`[generateInternEvaluationReport] Found ${interns.length} interns`);
 
     /* =============================
        PDF SETUP
@@ -225,8 +232,10 @@ exports.generateInternEvaluationReport = async (req, res) => {
 
     doc.end();
   } catch (err) {
-    console.error('❌ INTERN EVALUATION REPORT ERROR:', err);
+    console.error('\n❌ INTERN EVALUATION REPORT ERROR');
+    console.error('Error message:', err.message);
     console.error('Error stack:', err.stack);
+    console.error('===== END ERROR =====\n');
     if (doc) doc.end();
     if (!res.headersSent) {
       res.status(500).json({

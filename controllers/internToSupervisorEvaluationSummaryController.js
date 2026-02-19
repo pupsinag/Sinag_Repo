@@ -120,6 +120,9 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
   let doc;
   try {
     // Fetch all evaluations (no program filter)
+    console.log('\n[generateInternToSupervisorEvaluationSummary] ===== START =====');
+    console.log('[generateInternToSupervisorEvaluationSummary] Fetching supervisor evaluations');
+    
     const evaluations = await SupervisorEvaluation.findAll({
       include: [
         {
@@ -137,6 +140,8 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
       ],
       order: [[{ model: Intern, as: 'intern' }, 'id', 'ASC']],
     });
+    
+    console.log(`[generateInternToSupervisorEvaluationSummary] Found ${evaluations.length} evaluations`);
 
     // Fetch all SupervisorEvaluationItems
     const SupervisorEvaluationItem = require('../models')['SupervisorEvaluationItem'];
@@ -372,10 +377,12 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
     doc.end();
   } catch (err) {
     // Enhanced error logging for debugging
-    console.error('❌ INTERN TO SUPERVISOR EVALUATION SUMMARY ERROR:', err);
+    console.error('\n❌ INTERN TO SUPERVISOR EVALUATION SUMMARY ERROR');
+    console.error('Error message:', err.message);
     if (err.stack) {
-      console.error(err.stack);
+      console.error('Error stack:', err.stack);
     }
+    console.error('===== END ERROR =====\n');
     if (doc) doc.end();
     if (!res.headersSent) {
       res.status(500).json({

@@ -8,6 +8,9 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
 
   try {
     const { program, year_section } = req.body;
+    console.log('[generateInternSubmittedDocuments] Starting report generation');
+    console.log('[generateInternSubmittedDocuments] Program:', program, 'Year:', year_section);
+    
     if (!program) {
       return res.status(400).json({ message: 'Program is required' });
     }
@@ -26,6 +29,8 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       );
     }
     if (whereClause[Op.and].length === 0) delete whereClause[Op.and];
+    
+    console.log('[generateInternSubmittedDocuments] Fetching interns with where clause:', JSON.stringify(whereClause));
     const interns = await Intern.findAll({
       where: whereClause,
       include: [
@@ -50,12 +55,8 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       ],
       order: [[{ model: User, as: 'User' }, 'lastName', 'ASC']],
     });
-
-    const adviser = await User.findOne({
-      where: { role: 'adviser', program },
-    });
-
-    const adviserName = adviser ? `${adviser.firstName} ${adviser.lastName}`.toUpperCase() : 'N/A';
+    
+    console.log(`[generateInternSubmittedDocuments] Found ${interns.length} interns`);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename=interns_submitted_documents.pdf');
@@ -199,10 +200,16 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
 
     doc.end();
   } catch (err) {
-    console.error('❌ INTERN DOCUMENT MATRIX ERROR:', err);
+    console.error('\n❌ INTERN DOCUMENT MATRIX ERROR');
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    console.error('===== END ERROR =====\n');
     if (doc) doc.end();
     if (!res.headersSent) {
-      res.status(500).json({ message: 'Failed to generate Intern Submitted Documents report' });
+      res.status(500).json({ 
+        message: 'Failed to generate Intern Submitted Documents report',
+        error: err.message
+      });
     }
   }
 };
