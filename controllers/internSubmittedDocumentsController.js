@@ -281,3 +281,74 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
     }
   }
 };
+
+/* =========================
+   GET INTERN SUBMITTED DOCUMENTS (JSON - For Table View)
+========================= */
+exports.getInternSubmittedDocuments = async (req, res) => {
+  try {
+    const { program, year_section } = req.body;
+    
+    console.log('[getInternSubmittedDocuments] Fetching documents for:', { program, year_section });
+
+    if (!program) {
+      return res.status(400).json({ message: 'Program is required' });
+    }
+
+    const { Op } = require('sequelize');
+    
+    // Fetch interns with their documents
+    let whereClause = { program };
+    
+    let interns = await Intern.findAll({
+      where: whereClause,
+      include: [
+        { model: User, as: 'User' },
+        { model: Company, as: 'company' },
+        { 
+          model: InternDocuments, 
+          as: 'InternDocuments',
+          required: false
+        },
+      ],
+    });
+
+    // Filter by year_section if provided
+    if (year_section) {
+      const normalizedYearSection = year_section.replace(/\s/g, '').toLowerCase();
+      interns = interns.filter(intern =>
+        intern.year_section &&
+        intern.year_section.replace(/\s/g, '').toLowerCase() === normalizedYearSection
+      );
+    }
+
+    // Transform to frontend format
+    const data = interns.map(intern => ({
+      id: intern.id,
+      studNo: intern.User?.studentId || 'N/A',
+      firstname: intern.User?.firstName || 'N/A',
+      lastname: intern.User?.lastName || 'N/A',
+      email: intern.User?.email || 'N/A',
+      program: intern.program || 'N/A',
+      company: intern.company?.name || 'N/A',
+      documents: (intern.InternDocuments || []).map(doc => ({
+        id: doc.id,
+        type: doc.document_type,
+        fileName: doc.file_name,
+        filePath: doc.file_path,
+        uploadedDate: doc.uploaded_date,
+        status: doc.status,
+        remarks: doc.remarks,
+      })),
+    }));
+
+    console.log(`[getInternSubmittedDocuments] Found ${data.length} interns with documents`);
+    return res.json(data);
+  } catch (err) {
+    console.error('❌ Error fetching submitted documents:', err.message);
+    return res.status(500).json({
+      message: 'Failed to fetch submitted documents',
+      error: err.message
+    });
+  }
+};
