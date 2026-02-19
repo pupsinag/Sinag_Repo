@@ -206,7 +206,20 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
 
     // Fetch all SupervisorEvaluationItems (limit attributes to avoid timestamp/name mismatches)
     const SupervisorEvaluationItem = require('../models')['SupervisorEvaluationItem'];
-    const allItems = await SupervisorEvaluationItem.findAll({ attributes: ['id','evaluationId','section','indicator','rating'] });
+    let allItems = [];
+    try {
+      // Use raw:true so we get plain objects and avoid instance .get() issues
+      allItems = await SupervisorEvaluationItem.findAll({ attributes: ['id','evaluationId','section','indicator','rating'], raw: true });
+    } catch (err) {
+      const msg = (err && err.message) ? err.message : String(err);
+      // If the table is missing on production, log a warning and continue with empty items
+      if (msg.includes("doesn't exist") || msg.includes('ER_NO_SUCH_TABLE') || msg.toLowerCase().includes('no such table')) {
+        console.warn('[generateInternToSupervisorEvaluationSummary] supervisor_evaluation_items table missing in DB — continuing with empty items');
+      } else {
+        console.error('[generateInternToSupervisorEvaluationSummary] Error loading SupervisorEvaluationItem:', err);
+      }
+      allItems = [];
+    }
 
     // Get unique item sections/indicators for columns (e.g., I, II, III, IV, V)
     const itemLabels = [];
