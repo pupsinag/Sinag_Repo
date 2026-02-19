@@ -48,7 +48,6 @@ exports.generateInternEvaluationReport = async (req, res) => {
     // Step 1: Get base intern data
     const baseInterns = await Intern.findAll({
       where: whereClause,
-      attributes: ['id', 'user_id', 'company_id', 'supervisor_id'],
       raw: true,
     });
     console.log(`[generateInternEvaluationReport] Step 1: Found ${baseInterns.length} base interns`);
@@ -58,7 +57,6 @@ exports.generateInternEvaluationReport = async (req, res) => {
       const userIds = [...new Set(baseInterns.map(i => i.user_id).filter(Boolean))];
       const users = await User.findAll({
         where: { id: userIds },
-        attributes: ['id', 'firstName', 'lastName', 'email'],
         raw: true,
       });
       const userMap = Object.fromEntries(users.map(u => [u.id, u]));
@@ -70,14 +68,12 @@ exports.generateInternEvaluationReport = async (req, res) => {
       
       const companies = await Company.findAll({
         where: { id: companyIds },
-        attributes: ['id', 'name'],
         raw: true,
       });
       const companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
       
       const supervisors = await Supervisor.findAll({
         where: { id: supervisorIds },
-        attributes: ['id', 'name'],
         raw: true,
       });
       const supervisorMap = Object.fromEntries(supervisors.map(s => [s.id, s]));
@@ -87,7 +83,6 @@ exports.generateInternEvaluationReport = async (req, res) => {
       const internIds = baseInterns.map(i => i.id);
       const evaluations = await InternEvaluation.findAll({
         where: { intern_id: internIds },
-        attributes: ['id', 'intern_id', 'internName', 'section', 'hteName', 'jobDescription', 'totalScore', 'date'],
         raw: true,
       });
       const evalIds = evaluations.map(e => e.id);
@@ -97,7 +92,6 @@ exports.generateInternEvaluationReport = async (req, res) => {
         const { Op } = require('sequelize');
         evaluationItems = await InternEvaluationItem.findAll({
           where: { evaluationId: { [Op.in]: evalIds } },
-          attributes: ['id', 'evaluationId', 'category', 'score'],
           raw: true,
         });
       }
