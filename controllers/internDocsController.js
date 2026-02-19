@@ -58,7 +58,7 @@ async function uploadInternDoc(req, res) {
       });
     }
 
-    const validColumns = ['notarized_agreement', 'medical_cert', 'insurance', 'resume', 'cor', 'consent_form'];
+    const validColumns = ['notarized_agreement', 'medical_cert', 'insurance', 'resume', 'cor', 'consent_form', 'portfolio'];
     if (!validColumns.includes(targetColumn)) {
       return res.status(400).json({ message: 'Invalid document type' });
     }

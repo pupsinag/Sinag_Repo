@@ -62,6 +62,7 @@ exports.getMatchingInterns = async (req, res) => {
         // Also add direct properties for backward compatibility
         consent_form: documentsMap['consent_form']?.file_path || null,
         notarized_agreement: documentsMap['notarized_agreement']?.file_path || null,
+        portfolio: documentsMap['portfolio']?.file_path || null,
         resume: documentsMap['resume']?.file_path || null,
         cor: documentsMap['cor']?.file_path || null,
         insurance: documentsMap['insurance']?.file_path || null,
