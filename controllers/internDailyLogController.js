@@ -201,71 +201,73 @@ exports.getInternDailyLogsForAdviser = async (req, res) => {
     const { id } = req.params;
 
     console.log('\n=== GET DAILY LOGS (ADVISER) ===');
-    console.log('Fetching logs for intern_id:', id);
+      console.log('Requested intern_id (raw):', id);
 
-    /* =========================
-       FETCH LOGS FOR SPECIFIC INTERN
-    ========================= */
-    const logs = await InternDailyLog.findAll({
-      where: { intern_id: id },
-      order: [['log_date', 'DESC']],
-    });
-
-    console.log('✅ Found', logs.length, 'logs');
-
-    // ✅ NORMALIZE photo paths (handle JSON string, old 'uploads/filename' format & convert to array)
-    const normalizedLogs = logs.map((log) => {
-      if (log.photo_path) {
-        let pathData = log.photo_path;
-        
-        // If it's a JSON string, parse it first
-        if (typeof pathData === 'string' && (pathData.startsWith('[') || pathData.startsWith('{'))) {
-          try {
-            pathData = JSON.parse(pathData);
-            console.log(`   Parsed JSON string:`, pathData);
-          } catch (e) {
-            console.log(`   Failed to parse JSON, treating as string:`, pathData);
-          }
-        }
-        
-        // Now handle the data
-        if (typeof pathData === 'string') {
-          // Old format - single string path
-          const cleanPath = pathData.startsWith('uploads/') 
-            ? pathData.replace('uploads/', '')
-            : pathData;
-          log.photo_path = [cleanPath];
-          console.log(`   Converted string path to: [${cleanPath}]`);
-        } else if (Array.isArray(pathData)) {
-          // Already an array - clean up each path
-          log.photo_path = pathData.map(p => {
-            if (typeof p === 'string') {
-              return p.startsWith('uploads/') ? p.replace('uploads/', '') : p;
-            }
-            return p;
-          });
-          console.log(`   Array paths cleaned:`, log.photo_path);
-        }
+      // Validate intern id param
+      const internId = Number(id);
+      if (!Number.isInteger(internId) || internId <= 0) {
+        console.error('❌ Invalid intern id parameter:', id);
+        return res.status(400).json({ message: 'Invalid intern id' });
       }
-      return log;
-    });
 
-    // Debug: Show photo paths
-    normalizedLogs.forEach((log, idx) => {
-      console.log(`   Log ${idx + 1}: photo_path = ${log.photo_path || '(none)'}`);
-    });
-    console.log('');
+      /* =========================
+         FETCH LOGS FOR SPECIFIC INTERN
+      ========================= */
+      const logs = await InternDailyLog.findAll({
+        where: { intern_id: internId },
+        order: [['log_date', 'DESC']],
+      });
 
-    return res.json(normalizedLogs);
-  } catch (err) {
-    console.error('❌ GET INTERN DAILY LOGS ERROR:', err.message);
-    return res.status(500).json({ message: 'Failed to fetch daily logs' });
-  }
-};
+      console.log('✅ Found', logs.length, 'logs for intern_id:', internId);
 
-exports.approveLogByAdviser = async (req, res) => {
-  try {
-    const { InternDailyLog } = getModels();
+      // Normalize and safely transform each log to plain object
+      const normalizedLogs = logs.map((instance) => {
+        // Convert Sequelize instance to plain object to avoid accidental prototype issues
+        const log = typeof instance.toJSON === 'function' ? instance.toJSON() : { ...instance };
+
+        try {
+          if (log.photo_path) {
+            let pathData = log.photo_path;
+
+            // If it's a JSON string, parse it first
+            if (typeof pathData === 'string' && (pathData.startsWith('[') || pathData.startsWith('{'))) {
+              try {
+                pathData = JSON.parse(pathData);
+                console.log(`   Parsed JSON string for log ${log.id}:`, pathData);
+              } catch (e) {
+                console.warn(`   Failed to parse photo_path for log ${log.id}, treating as raw string`);
+              }
+            }
+
+            // Now normalize into an array of clean filenames or leave null on unexpected types
+            if (typeof pathData === 'string') {
+              const cleanPath = pathData.startsWith('uploads/') ? pathData.replace('uploads/', '') : pathData;
+              log.photo_path = [cleanPath];
+            } else if (Array.isArray(pathData)) {
+              log.photo_path = pathData.map((p) => (typeof p === 'string' ? (p.startsWith('uploads/') ? p.replace('uploads/', '') : p) : p));
+            } else {
+              console.warn(`   Unexpected photo_path type for log ${log.id}:`, typeof pathData);
+              log.photo_path = null;
+            }
+          }
+        } catch (normalizeErr) {
+          console.error(`   Error normalizing photo_path for log ${log.id}:`, normalizeErr);
+          log.photo_path = null;
+        }
+
+        return log;
+      });
+
+      // Lightweight debug: first 5 photo_path values
+      normalizedLogs.slice(0, 5).forEach((l, idx) => {
+        console.log(`   Log[${idx}] id=${l.id} photo_path=`, l.photo_path || '(none)');
+      });
+
+      return res.json(normalizedLogs);
+    } catch (err) {
+      // Log full error for debugging
+      console.error('❌ GET INTERN DAILY LOGS ERROR:', err);
+      return res.status(500).json({ message: 'Failed to fetch daily logs', error: err.message });
     const { reportId } = req.params;
     const { adviser_status, adviser_comment } = req.body;
 
