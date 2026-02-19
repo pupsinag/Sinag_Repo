@@ -90,6 +90,8 @@ exports.getInternsForAdviser = async (req, res) => {
       whereCondition = { adviser_id: req.user.id };
     }
 
+    console.log('[getInternsForAdviser] Where condition:', whereCondition);
+
     const interns = await Intern.findAll({
       where: whereCondition,
       include: [
@@ -97,33 +99,23 @@ exports.getInternsForAdviser = async (req, res) => {
           model: User,
           as: 'User',
           attributes: ['id', 'studentId', 'lastName', 'firstName', 'mi', 'email', 'program'],
+          required: false,
         },
         {
           model: Company,
           as: 'company',
-          attributes: { exclude: ['password'] },
-          required: false,
-        },
-        {
-          model: InternDocuments,
-          as: 'InternDocuments',
-          required: false,
-        },
-        {
-          model: require('../models').Supervisor,
-          as: 'Supervisor',
-          attributes: ['id', 'name'],
+          attributes: ['id', 'name', 'email', 'address', 'supervisorName', 'natureOfBusiness'],
           required: false,
         },
       ],
-      order: [[{ model: User, as: 'User' }, 'lastName', 'ASC']],
-      raw: false,
+      order: [['id', 'ASC']],
     });
 
     console.log('[getInternsForAdviser] Found', interns.length, 'interns');
     res.json(interns);
   } catch (err) {
-    console.error('❌ GET INTERNS FOR ADVISER ERROR:', err);
+    console.error('❌ GET INTERNS FOR ADVISER ERROR:', err.message);
+    console.error('Stack:', err.stack);
     res.status(500).json({ message: 'Failed to fetch interns', error: err.message });
   }
 };
