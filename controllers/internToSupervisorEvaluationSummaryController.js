@@ -131,8 +131,8 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
     // Step 1: Get base evaluations
     // Only select columns that definitely exist on the table to avoid schema mismatch errors
     const baseEvaluations = await SupervisorEvaluation.findAll({
-      // don't request `academic_year` — some DBs are missing this column in production
-      attributes: ['id', 'intern_id', 'supervisor_id', 'semester', 'user_id'],
+      // `academic_year` and `semester` may be absent in some production schemas — do not request them
+      attributes: ['id', 'intern_id', 'supervisor_id', 'user_id'],
       raw: true,
     });
     console.log(`[generateInternToSupervisorEvaluationSummary] Step 1: Found ${baseEvaluations.length} base evaluations`);
