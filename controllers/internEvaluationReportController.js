@@ -92,18 +92,23 @@ exports.generateInternEvaluationReport = async (req, res) => {
       });
       const evalIds = evaluations.map(e => e.id);
 
-      const evaluationItems = await InternEvaluationItem.findAll({
-        where: { evaluation_id: evalIds },
-        attributes: ['id', 'evaluation_id', 'category', 'score'],
-        raw: true,
-      });
+      let evaluationItems = [];
+      if (evalIds.length > 0) {
+        const { Op } = require('sequelize');
+        evaluationItems = await InternEvaluationItem.findAll({
+          where: { evaluationId: { [Op.in]: evalIds } },
+          attributes: ['id', 'evaluationId', 'category', 'score'],
+          raw: true,
+        });
+      }
+      console.log(`[generateInternEvaluationReport] Fetched ${evaluationItems.length} evaluation items for ${evalIds.length} evaluations`);
       
       // Map evaluations to interns and attach items
       const evaluationsByIntern = {};
       evaluations.forEach(eval => {
         const evalWithItems = {
           ...eval,
-          items: evaluationItems.filter(item => item.evaluation_id === eval.id),
+          items: evaluationItems.filter(item => item.evaluationId === eval.id),
         };
         if (!evaluationsByIntern[eval.intern_id]) {
           evaluationsByIntern[eval.intern_id] = [];
