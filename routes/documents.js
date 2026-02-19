@@ -6,7 +6,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const upload = require('../middleware/upload');
 
 // Controllers
-const { uploadInternDoc, getInternDocuments, downloadInternDoc, deleteInternDoc } = require('../controllers/internDocsController');
+const { uploadInternDoc, getInternDocuments, downloadInternDoc, viewInternDoc, deleteInternDoc } = require('../controllers/internDocsController');
 
 const consentController = require('../controllers/consentController');
 const notarizedAgreementController = require('../controllers/notarizedAgreementController');
@@ -45,7 +45,10 @@ router.post(
 // Get all document statuses for logged-in intern
 router.get('/intern-docs/me', getInternDocuments);
 
-// INTERN – download / view document
+// INTERN – view document inline in browser
+router.get('/intern-docs/view/:docId', viewInternDoc);
+
+// INTERN – download document (as attachment)
 router.get('/intern-docs/download/:docId', downloadInternDoc);
 
 // INTERN – delete document

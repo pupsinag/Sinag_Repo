@@ -290,7 +290,102 @@ async function deleteInternDoc(req, res) {
 }
 
 /* =========================
-   DOWNLOAD / VIEW DOCUMENT
+   VIEW DOCUMENT (inline in browser)
+========================= */
+// GET /api/auth/intern-docs/view/:docId
+async function viewInternDoc(req, res) {
+  try {
+    const { docId } = req.params;
+
+    console.log('[viewInternDoc] Requesting doc ID:', docId, 'by user:', req.user.id);
+
+    // Find the document
+    const doc = await InternDocuments.findOne({
+      where: { id: docId },
+    });
+
+    if (!doc) {
+      console.warn('[viewInternDoc] Document not found:', docId);
+      return res.status(404).json({ message: 'Document not found' });
+    }
+
+    // Verify ownership
+    const intern = await Intern.findOne({
+      where: { id: doc.intern_id, user_id: req.user.id },
+    });
+
+    if (!intern) {
+      console.warn('[viewInternDoc] Unauthorized access attempt for doc:', docId);
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Try to find the file with fallbacks
+    let actualFilePath = null;
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    
+    let filePath = path.join(uploadsDir, doc.file_path);
+    if (fs.existsSync(filePath)) {
+      actualFilePath = filePath;
+    } else {
+      filePath = path.join(uploadsDir, doc.file_name);
+      if (fs.existsSync(filePath)) {
+        actualFilePath = filePath;
+      } else {
+        const uploads = fs.readdirSync(uploadsDir);
+        const docNameBase = path.basename(doc.file_name, path.extname(doc.file_name));
+        const ext = path.extname(doc.file_name);
+        const found = uploads.find(f => f.includes(docNameBase) && f.endsWith(ext));
+        if (found) {
+          actualFilePath = path.join(uploadsDir, found);
+        }
+      }
+    }
+
+    if (!actualFilePath) {
+      console.error('[viewInternDoc] File not found:', doc.file_path);
+      return res.status(404).json({ message: 'File not found on server' });
+    }
+
+    // Determine content type based on file extension
+    const ext = path.extname(actualFilePath).toLowerCase();
+    let contentType = 'application/octet-stream';
+    
+    if (ext === '.pdf') {
+      contentType = 'application/pdf';
+    } else if (['.jpg', '.jpeg'].includes(ext)) {
+      contentType = 'image/jpeg';
+    } else if (ext === '.png') {
+      contentType = 'image/png';
+    } else if (ext === '.gif') {
+      contentType = 'image/gif';
+    }
+
+    // Set headers to display inline instead of download
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${doc.file_name}"`);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    // Stream the file
+    const fileStream = fs.createReadStream(actualFilePath);
+    fileStream.pipe(res);
+
+    fileStream.on('error', (err) => {
+      console.error('[viewInternDoc] Stream error:', err.message);
+      res.status(500).json({ message: 'Error viewing file' });
+    });
+
+    console.log('✅ Document view started:', doc.file_name);
+  } catch (err) {
+    console.error('❌ VIEW INTERN DOC ERROR:', err.message);
+    return res.status(500).json({
+      message: 'Failed to view document',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
+  }
+}
+
+/* =========================
+   DOWNLOAD DOCUMENT (force download)
 ========================= */
 // GET /api/auth/intern-docs/download/:docId
 async function downloadInternDoc(req, res) {
@@ -319,14 +414,43 @@ async function downloadInternDoc(req, res) {
       return res.status(403).json({ message: 'Access denied - this document does not belong to you' });
     }
 
-    const filePath = path.join(__dirname, '..', 'uploads', doc.file_path);
+    // Try to find the file - check multiple possible paths for backward compatibility
+    let actualFilePath = null;
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    
+    // Primary path: use file_path from database
+    let filePath = path.join(uploadsDir, doc.file_path);
+    console.log('[downloadInternDoc] Primary path:', filePath, 'exists:', fs.existsSync(filePath));
+    
+    if (fs.existsSync(filePath)) {
+      actualFilePath = filePath;
+    } else {
+      // Fallback: try using file_name (for old/migrated data)
+      filePath = path.join(uploadsDir, doc.file_name);
+      console.log('[downloadInternDoc] Fallback path:', filePath, 'exists:', fs.existsSync(filePath));
+      if (fs.existsSync(filePath)) {
+        actualFilePath = filePath;
+      } else {
+        // Last resort: search for files with similar naming pattern
+        console.warn('[downloadInternDoc] Attempting to find file by pattern...');
+        const uploads = fs.readdirSync(uploadsDir);
+        const docNameBase = path.basename(doc.file_name, path.extname(doc.file_name));
+        const ext = path.extname(doc.file_name);
+        const found = uploads.find(f => f.includes(docNameBase) && f.endsWith(ext));
+        
+        if (found) {
+          actualFilePath = path.join(uploadsDir, found);
+          console.log('[downloadInternDoc] Found by pattern:', found);
+        }
+      }
+    }
 
-    console.log('[downloadInternDoc] File path:', filePath);
-    console.log('[downloadInternDoc] File exists:', fs.existsSync(filePath));
-
-    if (!fs.existsSync(filePath)) {
-      console.error('[downloadInternDoc] File does not exist on disk:', filePath);
-      return res.status(404).json({ message: 'File not found on server' });
+    if (!actualFilePath) {
+      console.error('[downloadInternDoc] File does not exist on disk. file_path:', doc.file_path, 'file_name:', doc.file_name);
+      return res.status(404).json({ 
+        message: 'File not found on server',
+        details: process.env.NODE_ENV === 'development' ? { stored_path: doc.file_path, file_name: doc.file_name } : undefined
+      });
     }
 
     // Set headers for download
@@ -334,7 +458,7 @@ async function downloadInternDoc(req, res) {
     res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
 
     // Stream the file
-    const fileStream = fs.createReadStream(filePath);
+    const fileStream = fs.createReadStream(actualFilePath);
     fileStream.pipe(res);
 
     fileStream.on('error', (err) => {
@@ -356,5 +480,6 @@ module.exports = {
   uploadInternDoc,
   getInternDocuments,
   deleteInternDoc,
+  viewInternDoc,
   downloadInternDoc,
 };
