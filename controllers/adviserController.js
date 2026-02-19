@@ -34,7 +34,42 @@ exports.getMatchingInterns = async (req, res) => {
         { model: require('../models').Supervisor, as: 'Supervisor' },
       ],
     });
-    interns.forEach((intern) => {
+    
+    // ✅ Transform the response to include document map at top level for easier access
+    const transformedInterns = interns.map((intern) => {
+      const internObj = intern.toJSON();
+      
+      // Build a document map keyed by document_type for easy lookup
+      const documentsMap = {};
+      if (internObj.InternDocuments && Array.isArray(internObj.InternDocuments)) {
+        internObj.InternDocuments.forEach((doc) => {
+          documentsMap[doc.document_type] = {
+            id: doc.id,
+            file_name: doc.file_name,
+            file_path: doc.file_path,
+            uploaded_date: doc.uploaded_date,
+            status: doc.status,
+            remarks: doc.remarks,
+          };
+        });
+      }
+      
+      // Add the documents map at top level so frontend can easily access:
+      // intern.consent_form, intern.resume, etc. via documentsMap
+      return {
+        ...internObj,
+        _documentsMap: documentsMap, // Internal map for frontend reference
+        // Also add direct properties for backward compatibility
+        consent_form: documentsMap['consent_form']?.file_path || null,
+        notarized_agreement: documentsMap['notarized_agreement']?.file_path || null,
+        resume: documentsMap['resume']?.file_path || null,
+        cor: documentsMap['cor']?.file_path || null,
+        insurance: documentsMap['insurance']?.file_path || null,
+        medical_cert: documentsMap['medical_cert']?.file_path || null,
+      };
+    });
+    
+    transformedInterns.forEach((intern) => {
       console.log('--- [getMatchingInterns] Intern:', {
         id: intern.id,
         program: intern.program,
@@ -43,9 +78,10 @@ exports.getMatchingInterns = async (req, res) => {
         user_program: intern.User?.program,
         user_firstName: intern.User?.firstName,
         user_lastName: intern.User?.lastName,
+        documents: Object.keys(intern._documentsMap || {}),
       });
     });
-    return res.json(interns);
+    return res.json(transformedInterns);
   } catch (err) {
     console.error('❌ Error fetching matching interns:', err);
     res.status(500).json({ message: 'Server error' });
