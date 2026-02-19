@@ -4,6 +4,7 @@ const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const { getInterns } = require('../controllers/internInDashboardController');
 
-router.get('/interns', authMiddleware('adviser'), getInterns);
+// 🟢 Allow both adviser and coordinator to access
+router.get('/interns', authMiddleware(['adviser', 'coordinator']), getInterns);
 
 module.exports = router;
