@@ -68,9 +68,8 @@ module.exports = (sequelize, DataTypes) => {
       modelName: 'Company',
       tableName: 'companies',
       timestamps: true,
-      underscored: true,
-      createdAt: 'created_at',
-      updatedAt: 'updated_at',
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
     },
   );
 

@@ -45,9 +45,8 @@ module.exports = (sequelize, DataTypes) => {
     {
       tableName: 'supervisor_evaluation_items',
       timestamps: true,
-      underscored: true,
-      createdAt: 'created_at',
-      updatedAt: 'updated_at',
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
       // Add indexes, hooks, or scopes here if needed
     },
   );

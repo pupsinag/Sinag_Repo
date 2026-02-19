@@ -108,9 +108,8 @@ module.exports = (sequelize, DataTypes) => {
       modelName: 'InternDailyLog',
       tableName: 'intern_daily_logs',
       timestamps: true,
-      createdAt: 'created_at',
+      createdAt: 'createdAt',
       updatedAt: false,
-      underscored: true,
       indexes: [
         // One log per intern per calendar date
         { name: 'uniq_daily_log_date', unique: true, fields: ['intern_id', 'log_date'] },
