@@ -103,7 +103,7 @@ module.exports = (sequelize, DataTypes) => {
       timestamps: true,
       createdAt: 'createdAt',
       updatedAt: false,
-      underscored: false,
+      underscored: true,
     },
   );
 
