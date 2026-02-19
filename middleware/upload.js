@@ -10,7 +10,8 @@ if (!fs.existsSync(uploadsDir)) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    // Use absolute path to ensure files are saved in the correct location
+    cb(null, uploadsDir);
   },
 
   filename: (req, file, cb) => {
