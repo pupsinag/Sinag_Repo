@@ -169,17 +169,18 @@ FROM old_intern_daily_logs
 WHERE NOT EXISTS (SELECT 1 FROM intern_daily_logs WHERE intern_daily_logs.id = old_intern_daily_logs.id);
 
 -- Migrate intern_documents data
-INSERT INTO intern_documents (id, intern_id, consent_form, notarized_agreement, resume, cor, insurance, medical_cert, uploaded_at)
+INSERT INTO intern_documents (id, intern_id, document_type, file_name, file_path, uploaded_date, status, remarks, createdAt, updatedAt)
 SELECT 
   id, 
   intern_id, 
-  consent_form, 
-  notarized_agreement, 
-  resume, 
-  cor, 
-  insurance, 
-  medical_cert, 
-  uploaded_at
+  document_type, 
+  file_name, 
+  file_path, 
+  uploaded_date, 
+  status, 
+  remarks, 
+  createdAt, 
+  updatedAt
 FROM old_intern_documents
 WHERE NOT EXISTS (SELECT 1 FROM intern_documents WHERE intern_documents.id = old_intern_documents.id);
 
