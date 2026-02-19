@@ -49,32 +49,65 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
     if (whereClause[Op.and].length === 0) delete whereClause[Op.and];
     
     console.log('[generateInternSubmittedDocuments] Fetching interns with where clause:', JSON.stringify(whereClause));
+    
+    // Step 1: Get base intern data
     const interns = await Intern.findAll({
       where: whereClause,
-      include: [
-        {
-          model: User,
-          as: 'User',
-          required: true,
-          attributes: ['firstName', 'lastName'],
-        },
-        {
-          model: InternDocuments,
-          as: 'InternDocuments',
-          required: false,
-          attributes: ['id', 'consent_form', 'notarized_agreement', 'resume', 'cor', 'insurance', 'medical_cert'],
-        },
-        {
-          model: Company,
-          as: 'company',
-          required: false,
-          attributes: ['moaFile'],
-        },
-      ],
-      order: [[{ model: User, as: 'User' }, 'lastName', 'ASC']],
+      attributes: ['id', 'user_id', 'company_id'],
+      raw: true,
     });
+    console.log(`[generateInternSubmittedDocuments] Step 1: Found ${interns.length} base interns`);
+
+    if (interns.length === 0) {
+      console.log('[generateInternSubmittedDocuments] No interns found, returning empty list');
+    } else {
+      // Step 2: Get user data
+      const userIds = [...new Set(interns.map(i => i.user_id).filter(Boolean))];
+      const users = await User.findAll({
+        where: { id: userIds },
+        attributes: ['id', 'firstName', 'lastName'],
+        raw: true,
+      });
+      const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+      console.log(`[generateInternSubmittedDocuments] Step 2: Fetched ${users.length} users`);
+
+      // Step 3: Get InternDocuments data
+      const internIds = interns.map(i => i.id);
+      const allDocs = await InternDocuments.findAll({
+        where: { intern_id: internIds },
+        attributes: ['id', 'intern_id', 'consent_form', 'notarized_agreement', 'resume', 'cor', 'insurance', 'medical_cert'],
+        raw: true,
+      });
+      const docsMap = Object.fromEntries(allDocs.map(d => [d.intern_id, [d]]));
+      console.log(`[generateInternSubmittedDocuments] Step 3: Fetched ${allDocs.length} documents`);
+
+      // Step 4: Get Company data
+      const companyIds = [...new Set(interns.map(i => i.company_id).filter(Boolean))];
+      const companies = await Company.findAll({
+        where: { id: companyIds },
+        attributes: ['id', 'moaFile'],
+        raw: true,
+      });
+      const companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
+      console.log(`[generateInternSubmittedDocuments] Step 4: Fetched ${companies.length} companies`);
+
+      // Enrich interns with related data
+      interns.forEach(intern => {
+        intern.User = userMap[intern.user_id] || {};
+        intern.InternDocuments = docsMap[intern.id] || [];
+        intern.company = companyMap[intern.company_id] || {};
+      });
+    }
     
-    console.log(`[generateInternSubmittedDocuments] Found ${interns.length} interns`);
+    console.log(`[generateInternSubmittedDocuments] Total enriched interns: ${interns.length}`);
+
+    // Sort by last name
+    interns.sort((a, b) => {
+      const nameA = (a.User?.lastName || '').toLowerCase();
+      const nameB = (b.User?.lastName || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+    console.log('[generateInternSubmittedDocuments] Interns sorted by last name');
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename=interns_submitted_documents.pdf');
