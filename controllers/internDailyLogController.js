@@ -268,6 +268,15 @@ exports.getInternDailyLogsForAdviser = async (req, res) => {
       // Log full error for debugging
       console.error('❌ GET INTERN DAILY LOGS ERROR:', err);
       return res.status(500).json({ message: 'Failed to fetch daily logs', error: err.message });
+    }
+};
+
+/* =========================
+   APPROVE LOG BY ADVISER
+========================= */
+exports.approveLogByAdviser = async (req, res) => {
+  try {
+    const { InternDailyLog } = getModels();
     const { reportId } = req.params;
     const { adviser_status, adviser_comment } = req.body;
 
