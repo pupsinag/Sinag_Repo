@@ -47,6 +47,7 @@ exports.generateInternEvaluationReport = async (req, res) => {
     
     // Step 1: Get base intern data
     const baseInterns = await Intern.findAll({
+      attributes: ['id', 'user_id', 'company_id', 'supervisor_id', 'program', 'year_section'],
       where: whereClause,
       raw: true,
     });
@@ -56,6 +57,7 @@ exports.generateInternEvaluationReport = async (req, res) => {
       // Step 2: Get User data
       const userIds = [...new Set(baseInterns.map(i => i.user_id).filter(Boolean))];
       const users = await User.findAll({
+        attributes: ['id', 'firstName', 'lastName'],
         where: { id: userIds },
         raw: true,
       });
@@ -67,12 +69,14 @@ exports.generateInternEvaluationReport = async (req, res) => {
       const supervisorIds = [...new Set(baseInterns.map(i => i.supervisor_id).filter(Boolean))];
       
       const companies = await Company.findAll({
+        attributes: ['id', 'name'],
         where: { id: companyIds },
         raw: true,
       });
       const companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
       
       const supervisors = await Supervisor.findAll({
+        attributes: ['id', 'name'],
         where: { id: supervisorIds },
         raw: true,
       });
@@ -82,6 +86,7 @@ exports.generateInternEvaluationReport = async (req, res) => {
       // Step 4: Get Evaluations and Evaluation Items
       const internIds = baseInterns.map(i => i.id);
       const evaluations = await InternEvaluation.findAll({
+        attributes: ['id', 'intern_id'],
         where: { intern_id: internIds },
         raw: true,
       });
@@ -91,6 +96,7 @@ exports.generateInternEvaluationReport = async (req, res) => {
       if (evalIds.length > 0) {
         const { Op } = require('sequelize');
         evaluationItems = await InternEvaluationItem.findAll({
+          attributes: ['id', 'evaluationId', 'category', 'score', 'remarks'],
           where: { evaluationId: { [Op.in]: evalIds } },
           raw: true,
         });
