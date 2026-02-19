@@ -694,6 +694,8 @@ exports.addCompany = async (req, res, next) => {
     // 🔐 HASH PASSWORD
     const passwordHash = await bcrypt.hash(tempPassword, 10);
 
+    console.log('[addCompany] Creating company:', { name, email });
+
     // 🏢 CREATE COMPANY
     const company = await Company.create({
       name,
@@ -708,29 +710,41 @@ exports.addCompany = async (req, res, next) => {
       forcePasswordChange: true,
     });
 
+    console.log('[addCompany] Company created successfully:', company.id);
+
     // 📧 SEND EMAIL
-    await sendCredentialsEmail({
-      email: company.email,
-      password: tempPassword,
-      role: 'Supervisor',
-    });
+    try {
+      await sendCredentialsEmail({
+        email: company.email,
+        password: tempPassword,
+        role: 'Supervisor',
+      });
+      console.log('[addCompany] Credentials email sent to:', company.email);
+    } catch (emailErr) {
+      console.warn('[addCompany] Email sending failed (non-critical):', emailErr.message);
+    }
 
     res.status(201).json({
       message: 'Company added and credentials sent',
       company,
     });
   } catch (err) {
+    console.error('❌ [addCompany] Error:', err);
     next(err);
   }
 };
 
 exports.getHTE = async (req, res, next) => {
   try {
+    console.log('[getHTE] Fetching all companies for user:', req.user?.id);
     const companies = await Company.findAll({
       attributes: { exclude: ['password'] },
+      raw: true,
     });
+    console.log('[getHTE] Found', companies.length, 'companies');
     res.json(companies);
   } catch (err) {
+    console.error('❌ [getHTE] Error:', err);
     next(err);
   }
 };

@@ -139,7 +139,7 @@ const handleMOAUploadError = (req, res, next) => {
 
 router.post('/addCompany', authMiddleware(['coordinator']), handleMOAUploadError, authController.addCompany);
 
-router.get('/HTE', authController.getHTE);
+router.get('/HTE', authMiddleware(['coordinator', 'adviser']), authController.getHTE);
 
 router.put('/HTE/:id', authMiddleware(['coordinator']), handleMOAUploadError, authController.updateCompany);
 
