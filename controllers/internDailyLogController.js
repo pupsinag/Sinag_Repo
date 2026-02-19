@@ -147,6 +147,28 @@ exports.getDailyLogs = async (req, res) => {
     const logs = await InternDailyLog.findAll({
       where: { intern_id: intern.id },
       order: [['log_date', 'DESC']],
+    }).catch(async (err) => {
+      // If day_no column doesn't exist yet, use raw query without it
+      if (err.message.includes("Unknown column 'day_no'")) {
+        console.warn('⚠️ day_no column not found, using fallback query');
+        const { sequelize } = require('../config/database');
+        const rawLogs = await sequelize.query(
+          `SELECT id, intern_id, log_date, time_in, time_out, total_hours, 
+                  tasks_accomplished, skills_enhanced, learning_applied, photo_path, 
+                  supervisor_status, adviser_status, supervisor_comment, adviser_comment,
+                  supervisor_approved_at, adviser_approved_at, createdAt, updatedAt
+           FROM intern_daily_logs 
+           WHERE intern_id = ?
+           ORDER BY log_date DESC`,
+          {
+            replacements: [intern.id],
+            type: require('sequelize').QueryTypes.SELECT,
+          }
+        );
+        return rawLogs;
+      } else {
+        throw err; // Re-throw if it's a different error
+      }
     });
 
     // ✅ NORMALIZE photo paths (handle JSON string, old 'uploads/filename' format & convert to array)
@@ -216,6 +238,28 @@ exports.getInternDailyLogsForAdviser = async (req, res) => {
       const logs = await InternDailyLog.findAll({
         where: { intern_id: internId },
         order: [['log_date', 'DESC']],
+      }).catch(async (err) => {
+        // If day_no column doesn't exist yet, use raw query without it
+        if (err.message.includes("Unknown column 'day_no'")) {
+          console.warn('⚠️ day_no column not found, using fallback query');
+          const { sequelize } = require('../config/database');
+          const rawLogs = await sequelize.query(
+            `SELECT id, intern_id, log_date, time_in, time_out, total_hours, 
+                    tasks_accomplished, skills_enhanced, learning_applied, photo_path, 
+                    supervisor_status, adviser_status, supervisor_comment, adviser_comment,
+                    supervisor_approved_at, adviser_approved_at, createdAt, updatedAt
+             FROM intern_daily_logs 
+             WHERE intern_id = ?
+             ORDER BY log_date DESC`,
+            {
+              replacements: [internId],
+              type: require('sequelize').QueryTypes.SELECT,
+            }
+          );
+          return rawLogs;
+        } else {
+          throw err; // Re-throw if it's a different error
+        }
       });
 
       console.log('✅ Found', logs.length, 'logs for intern_id:', internId);
@@ -405,6 +449,28 @@ exports.getCompanyInternDailyLogs = async (req, res) => {
     const logs = await InternDailyLog.findAll({
       where: { intern_id: internId },
       order: [['log_date', 'DESC']],
+    }).catch(async (err) => {
+      // If day_no column doesn't exist yet, use raw query without it
+      if (err.message.includes("Unknown column 'day_no'")) {
+        console.warn('⚠️ day_no column not found, using fallback query');
+        const { sequelize } = require('../config/database');
+        const rawLogs = await sequelize.query(
+          `SELECT id, intern_id, log_date, time_in, time_out, total_hours, 
+                  tasks_accomplished, skills_enhanced, learning_applied, photo_path, 
+                  supervisor_status, adviser_status, supervisor_comment, adviser_comment,
+                  supervisor_approved_at, adviser_approved_at, createdAt, updatedAt
+           FROM intern_daily_logs 
+           WHERE intern_id = ?
+           ORDER BY log_date DESC`,
+          {
+            replacements: [internId],
+            type: require('sequelize').QueryTypes.SELECT,
+          }
+        );
+        return rawLogs;
+      } else {
+        throw err; // Re-throw if it's a different error
+      }
     });
 
     console.log(`✅ Found ${logs.length} logs for intern`);
