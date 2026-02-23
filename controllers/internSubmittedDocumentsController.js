@@ -77,7 +77,14 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
         where: { intern_id: internIds },
         raw: true,
       });
-      const docsMap = Object.fromEntries(allDocs.map(d => [d.intern_id, [d]]));
+      // Build map to accumulate ALL documents for each intern (not just the last one)
+      const docsMap = allDocs.reduce((acc, d) => {
+        if (!acc[d.intern_id]) {
+          acc[d.intern_id] = [];
+        }
+        acc[d.intern_id].push(d);
+        return acc;
+      }, {});
       console.log(`[generateInternSubmittedDocuments] Step 3: Fetched ${allDocs.length} documents`);
 
       // Step 4: Get Company data

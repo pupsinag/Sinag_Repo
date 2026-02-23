@@ -149,15 +149,40 @@ exports.getInternsForAdviser = async (req, res) => {
       console.log('[getInternsForAdviser] No company IDs found');
     }
 
-    // Step 4: Enrich interns with User and Company data
-    console.log('[getInternsForAdviser] Step 4: Enriching intern data...');
+    // Step 4: Get InternDocuments data for each intern
+    console.log('[getInternsForAdviser] Step 4: Fetching intern documents...');
+    const internIdsList = interns.map((i) => i.id).filter(Boolean);
+    const docsMap = {};
+    
+    if (internIdsList.length > 0) {
+      console.log('[getInternsForAdviser] Intern IDs to fetch documents for:', internIdsList.join(', '));
+      const allDocs = await require('../models').InternDocuments.findAll({
+        where: { intern_id: internIdsList },
+        raw: true,
+      });
+      console.log(`[getInternsForAdviser] Step 4 COMPLETE: Found ${allDocs.length} documents`);
+      
+      // Build map to accumulate ALL documents for each intern (not just the last one)
+      allDocs.forEach((doc) => {
+        if (!docsMap[doc.intern_id]) {
+          docsMap[doc.intern_id] = [];
+        }
+        docsMap[doc.intern_id].push(doc);
+      });
+    } else {
+      console.log('[getInternsForAdviser] No intern IDs found for documents');
+    }
+
+    // Step 5: Enrich interns with User, Company, and InternDocuments data
+    console.log('[getInternsForAdviser] Step 5: Enriching intern data...');
     const enrichedInterns = interns.map((intern) => ({
       ...intern,
       User: users[intern.user_id] || null,
       company: intern.company_id ? companies[intern.company_id] || null : null,
+      InternDocuments: docsMap[intern.id] || [],
     }));
 
-    console.log(`[getInternsForAdviser] ===== SUCCESS: Returning ${enrichedInterns.length} enriched interns =====\n`);
+    console.log(`[getInternsForAdviser] ===== SUCCESS: Returning ${enrichedInterns.length} enriched interns with documents =====\n`);
     res.json(enrichedInterns);
   } catch (err) {
     console.error('\n❌ GET INTERNS FOR ADVISER ERROR');
