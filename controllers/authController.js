@@ -6,6 +6,7 @@ const { literal } = require('sequelize');
 const { User, Intern, Company, InternDocuments } = require('../models');
 const db = require('../models');
 const sendCredentialsEmail = require('../utils/sendCredentialsEmail');
+const sendCredentialUpdateEmail = require('../utils/sendCredentialUpdateEmail');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
@@ -477,7 +478,35 @@ exports.updateIntern = async (req, res, next) => {
     });
     if (!intern) return res.status(404).json({ message: 'Intern not found' });
 
+    // ✅ CRITICAL: Verify adviser access - can only edit assigned interns
+    if (req.user.role === 'adviser') {
+      const adviserProgram = req.user.program ? req.user.program.trim().toUpperCase() : '';
+      const adviserYearSection = req.user.year_section ? req.user.year_section.trim().toUpperCase() : '';
+      const internProgram = intern.program ? intern.program.trim().toUpperCase() : '';
+      const internYearSection = intern.year_section ? intern.year_section.trim().toUpperCase() : '';
+      
+      console.log('[updateIntern] Adviser access check:', {
+        adviserProgram,
+        adviserYearSection,
+        internProgram,
+        internYearSection,
+      });
+      
+      if (adviserProgram !== internProgram || adviserYearSection !== internYearSection) {
+        return res.status(403).json({ message: 'Forbidden: You can only edit interns from your program and year/section' });
+      }
+    }
+
     const { firstName, lastName, mi, email, studentId, program } = req.body;
+
+    // ✅ TRACK CHANGES for email notification
+    const changedFields = {};
+    if (firstName && intern.User.firstName !== firstName) changedFields.firstName = firstName;
+    if (lastName && intern.User.lastName !== lastName) changedFields.lastName = lastName;
+    if (mi && intern.User.mi !== mi) changedFields.mi = mi;
+    if (email && intern.User.email !== email.toLowerCase()) changedFields.email = email.toLowerCase();
+    if (studentId && intern.User.studentId !== studentId) changedFields.studentId = studentId;
+    if (program && intern.program !== program) changedFields.program = program;
 
     // ✅ Update USER fields
     await intern.User.update({
@@ -492,6 +521,28 @@ exports.updateIntern = async (req, res, next) => {
     // ✅ Update INTERN fields if needed
     await intern.update({ program });
 
+    // ✅ SEND EMAIL NOTIFICATION if changes were made
+    if (Object.keys(changedFields).length > 0) {
+      const updaterName = `${req.user.firstName} ${req.user.lastName}`.trim();
+      const internName = `${intern.User.firstName} ${intern.User.lastName}`.trim();
+      
+      // Send async (don't wait for it, but log if it fails)
+      sendCredentialUpdateEmail({
+        internEmail: intern.User.email,
+        internName,
+        changes: changedFields,
+        updatedBy: updaterName,
+      }).catch((error) => {
+        console.error('⚠️ Failed to send credential update email:', error);
+      });
+
+      console.log('[updateIntern] 📧 Credential update email queued for:', {
+        internEmail: intern.User.email,
+        changedFields: Object.keys(changedFields),
+        updatedBy: updaterName,
+      });
+    }
+
     res.json({
       message: 'Intern updated successfully',
       intern,
@@ -505,6 +556,25 @@ exports.deleteIntern = async (req, res, next) => {
   try {
     const intern = await Intern.findByPk(req.params.id);
     if (!intern) return res.status(404).json({ message: 'Intern not found' });
+
+    // ✅ CRITICAL: Verify adviser access - can only delete assigned interns
+    if (req.user.role === 'adviser') {
+      const adviserProgram = req.user.program ? req.user.program.trim().toUpperCase() : '';
+      const adviserYearSection = req.user.year_section ? req.user.year_section.trim().toUpperCase() : '';
+      const internProgram = intern.program ? intern.program.trim().toUpperCase() : '';
+      const internYearSection = intern.year_section ? intern.year_section.trim().toUpperCase() : '';
+      
+      console.log('[deleteIntern] Adviser access check:', {
+        adviserProgram,
+        adviserYearSection,
+        internProgram,
+        internYearSection,
+      });
+      
+      if (adviserProgram !== internProgram || adviserYearSection !== internYearSection) {
+        return res.status(403).json({ message: 'Forbidden: You can only delete interns from your program and year/section' });
+      }
+    }
 
     await InternDocuments.destroy({
       where: { intern_id: intern.id },

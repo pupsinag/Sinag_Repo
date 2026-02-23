@@ -2,6 +2,8 @@
 exports.getMatchingInterns = async (req, res) => {
   try {
     const { program, yearSection } = req.user;
+    const adviserId = req.user.id; // ✅ ADD ADVISER ID
+    console.log('--- [getMatchingInterns] Adviser ID:', adviserId);
     console.log('--- [getMatchingInterns] Adviser program:', program);
     console.log('--- [getMatchingInterns] Adviser yearSection:', yearSection);
     if (!program) {
@@ -9,17 +11,15 @@ exports.getMatchingInterns = async (req, res) => {
       return res.status(400).json({ message: 'Program missing from user profile.' });
     }
 
-    const { Op, fn, col, where } = require('sequelize');
-    const whereCondition = { program };
+    // ✅ FILTER BY adviser_id, program, AND year_section
+    const whereCondition = { 
+      program,
+      adviser_id: adviserId // ✅ CRITICAL: Only show interns assigned to this adviser
+    };
 
-    // If adviser has a yearSection, filter by it; otherwise, return all interns in their program
+    // ✅ If adviser has a yearSection, MUST filter by it - critical for program with multiple year/sections
     if (yearSection) {
-      whereCondition[Op.and] = [
-        where(
-          fn('REPLACE', fn('LOWER', col('year_section')), ' ', ''),
-          fn('REPLACE', fn('LOWER', yearSection), ' ', ''),
-        ),
-      ];
+      whereCondition.year_section = yearSection;
       console.log('--- [getMatchingInterns] Filtering by yearSection:', yearSection);
     } else {
       console.log('--- [getMatchingInterns] No yearSection - returning all interns for program');

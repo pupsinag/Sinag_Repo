@@ -6,13 +6,18 @@ const { Intern, InternDocuments, User, Company } = require('../models');
 exports.generateInternSubmittedDocuments = async (req, res) => {
   console.log('\n\n========== generateInternSubmittedDocuments STARTED ==========');
   console.log('Request body:', JSON.stringify(req.body));
-  console.log('Request user:', req.user ? { id: req.user.id, role: req.user.role } : 'NO USER');
+  console.log('Request user:', req.user ? { id: req.user.id, role: req.user.role, programme: req.user.program, yearSection: req.user.yearSection } : 'NO USER');
   
   let doc;
 
   try {
     const { program, year_section } = req.body;
+    const adviserId = req.user?.id; // ✅ Get adviser ID
+    const adviserProgram = req.user?.program; // ✅ Get adviser's programme
+    const adviserYearSection = req.user?.yearSection; // ✅ Get adviser's year_section
+    
     console.log('[generateInternSubmittedDocuments] program=', program, ', year_section=', year_section);
+    console.log('[generateInternSubmittedDocuments] adviser_id=', adviserId, ', adviserProgram=', adviserProgram, ', adviserYearSection=', adviserYearSection);
     console.log('[generateInternSubmittedDocuments] Models loaded:', {
       Intern: !!Intern,
       InternDocuments: !!InternDocuments,
@@ -33,8 +38,10 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
     console.log('[generateInternSubmittedDocuments] Adviser name:', adviserName);
 
     const { Op, fn, col } = require('sequelize');
+    // ✅ CRITICAL: Filter by adviser_id + programme + year_section
     let whereClause = {
       program,
+      adviser_id: adviserId, // Only interns assigned to this adviser
     };
     
     console.log('[generateInternSubmittedDocuments] Fetching interns with where clause:', JSON.stringify(whereClause));
@@ -77,7 +84,14 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
         where: { intern_id: internIds },
         raw: true,
       });
-      const docsMap = Object.fromEntries(allDocs.map(d => [d.intern_id, [d]]));
+      // ✅ FIX: Group documents properly - don't lose documents with Object.fromEntries!
+      const docsMap = {};
+      allDocs.forEach(d => {
+        if (!docsMap[d.intern_id]) {
+          docsMap[d.intern_id] = [];
+        }
+        docsMap[d.intern_id].push(d);
+      });
       console.log(`[generateInternSubmittedDocuments] Step 3: Fetched ${allDocs.length} documents`);
 
       // Step 4: Get Company data
@@ -288,8 +302,10 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
 exports.getInternSubmittedDocuments = async (req, res) => {
   try {
     const { program, year_section } = req.body;
+    const adviserId = req.user?.id; // ✅ Get adviser ID
+    const adviserYearSection = req.user?.yearSection; // ✅ Get adviser's year_section
     
-    console.log('[getInternSubmittedDocuments] Fetching documents for:', { program, year_section });
+    console.log('[getInternSubmittedDocuments] Fetching documents for:', { program, year_section, adviser_id: adviserId, adviserYearSection });
 
     if (!program) {
       return res.status(400).json({ message: 'Program is required' });
@@ -297,8 +313,13 @@ exports.getInternSubmittedDocuments = async (req, res) => {
 
     const { Op } = require('sequelize');
     
-    // Fetch interns with their documents
-    let whereClause = { program };
+    // ✅ CRITICAL: Filter by adviser_id + programme + year_section
+    let whereClause = { 
+      program,
+      adviser_id: adviserId // Only interns assigned to this adviser
+    };
+    
+    console.log('[getInternSubmittedDocuments] WHERE CLAUSE:', JSON.stringify(whereClause));
     
     let interns = await Intern.findAll({
       where: whereClause,
@@ -308,41 +329,51 @@ exports.getInternSubmittedDocuments = async (req, res) => {
         { 
           model: InternDocuments, 
           as: 'InternDocuments',
-          required: false
+          required: false  // LEFT JOIN - include interns even if no documents
         },
       ],
     });
 
-    // Filter by year_section if provided
-    if (year_section) {
-      const normalizedYearSection = year_section.replace(/\s/g, '').toLowerCase();
-      interns = interns.filter(intern =>
+    console.log(`[getInternSubmittedDocuments] Found ${interns.length} interns`);
+
+    // ✅ CRITICAL: Also filter by year_section to match adviser's year_section
+    let filteredInterns = interns;
+    const yearSectionToFilter = year_section || adviserYearSection; // Use req.body or adviser's year_section
+    
+    if (yearSectionToFilter) {
+      const normalizedYearSection = yearSectionToFilter.replace(/\s/g, '').toLowerCase();
+      filteredInterns = interns.filter(intern =>
         intern.year_section &&
         intern.year_section.replace(/\s/g, '').toLowerCase() === normalizedYearSection
       );
+      console.log(`[getInternSubmittedDocuments] After year_section filter (${yearSectionToFilter}): ${filteredInterns.length} interns`);
     }
 
     // Transform to frontend format
-    const data = interns.map(intern => ({
-      id: intern.id,
-      studNo: intern.User?.studentId || 'N/A',
-      firstname: intern.User?.firstName || 'N/A',
-      lastname: intern.User?.lastName || 'N/A',
-      email: intern.User?.email || 'N/A',
-      program: intern.program || 'N/A',
-      company: intern.company?.name || 'N/A',
-      documents: (intern.InternDocuments || []).map(doc => ({
-        id: doc.id,
-        type: doc.document_type,
-        fileName: doc.file_name,
-        filePath: doc.file_path,
-        uploadedDate: doc.uploaded_date,
-        status: doc.status,
-        remarks: doc.remarks,
-      })),
-    }));
+    const data = filteredInterns.map(intern => {
+      const internData = {
+        id: intern.id,
+        studNo: intern.User?.studentId || 'N/A',
+        firstname: intern.User?.firstName || 'N/A',
+        lastname: intern.User?.lastName || 'N/A',
+        email: intern.User?.email || 'N/A',
+        program: intern.program || 'N/A',
+        company: intern.company?.name || 'N/A',
+        documents: (intern.InternDocuments || []).map(doc => ({
+          id: doc.id,
+          type: doc.document_type,
+          fileName: doc.file_name,
+          filePath: doc.file_path,
+          uploadedDate: doc.uploaded_date,
+          status: doc.status,
+          remarks: doc.remarks,
+        })),
+      };
+      console.log(`[getInternSubmittedDocuments] Intern ${intern.id}: ${intern.User?.firstName} ${intern.User?.lastName}, Documents: ${internData.documents.length}`);
+      return internData;
+    });
 
-    console.log(`[getInternSubmittedDocuments] Found ${data.length} interns with documents`);
+    console.log(`[getInternSubmittedDocuments] Returning ${data.length} interns with documents`);
     return res.json(data);
   } catch (err) {
     console.error('❌ Error fetching submitted documents:', err.message);

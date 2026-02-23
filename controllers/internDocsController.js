@@ -297,7 +297,7 @@ async function viewInternDoc(req, res) {
   try {
     const { docId } = req.params;
 
-    console.log('[viewInternDoc] Requesting doc ID:', docId, 'by user:', req.user.id);
+    console.log('[viewInternDoc] Requesting doc ID:', docId, 'by user:', req.user.id, 'role:', req.user.role);
 
     // Find the document
     const doc = await InternDocuments.findOne({
@@ -309,13 +309,33 @@ async function viewInternDoc(req, res) {
       return res.status(404).json({ message: 'Document not found' });
     }
 
-    // Verify ownership
-    const intern = await Intern.findOne({
-      where: { id: doc.intern_id, user_id: req.user.id },
-    });
-
+    // ✅ Verify access: Allow interns to view their own docs OR advisers to view assigned intern docs
+    let hasAccess = false;
+    const intern = await Intern.findByPk(doc.intern_id);
+    
     if (!intern) {
-      console.warn('[viewInternDoc] Unauthorized access attempt for doc:', docId);
+      console.warn('[viewInternDoc] Intern not found for doc:', docId);
+      return res.status(404).json({ message: 'Intern not found' });
+    }
+
+    // Case 1: Intern viewing their own document
+    if (intern.user_id === req.user.id) {
+      hasAccess = true;
+      console.log('[viewInternDoc] Access granted: Intern viewing own document');
+    }
+    // Case 2: Adviser viewing assigned intern's document
+    else if (req.user.role === 'adviser' && intern.adviser_id === req.user.id) {
+      hasAccess = true;
+      console.log('[viewInternDoc] Access granted: Adviser viewing assigned intern document');
+    }
+    // Case 3: Coordinator/admin has access to all
+    else if (req.user.role === 'coordinator' || req.user.role === 'superadmin') {
+      hasAccess = true;
+      console.log('[viewInternDoc] Access granted: Coordinator/admin viewing document');
+    }
+
+    if (!hasAccess) {
+      console.warn('[viewInternDoc] Unauthorized access attempt for doc:', docId, 'by user:', req.user.id);
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -404,14 +424,34 @@ async function downloadInternDoc(req, res) {
       return res.status(404).json({ message: 'Document not found' });
     }
 
-    // Verify ownership - make sure this document belongs to the requesting user
-    const intern = await Intern.findOne({
-      where: { id: doc.intern_id, user_id: req.user.id },
-    });
-
+    // ✅ Verify access: Allow interns to download their own docs OR advisers to download assigned intern docs
+    let hasAccess = false;
+    const intern = await Intern.findByPk(doc.intern_id);
+    
     if (!intern) {
-      console.warn('[downloadInternDoc] Unauthorized access attempt for doc:', docId);
-      return res.status(403).json({ message: 'Access denied - this document does not belong to you' });
+      console.warn('[downloadInternDoc] Intern not found for doc:', docId);
+      return res.status(404).json({ message: 'Intern not found' });
+    }
+
+    // Case 1: Intern downloading their own document
+    if (intern.user_id === req.user.id) {
+      hasAccess = true;
+      console.log('[downloadInternDoc] Access granted: Intern downloading own document');
+    }
+    // Case 2: Adviser downloading assigned intern's document
+    else if (req.user.role === 'adviser' && intern.adviser_id === req.user.id) {
+      hasAccess = true;
+      console.log('[downloadInternDoc] Access granted: Adviser downloading assigned intern document');
+    }
+    // Case 3: Coordinator/admin has access to all
+    else if (req.user.role === 'coordinator' || req.user.role === 'superadmin') {
+      hasAccess = true;
+      console.log('[downloadInternDoc] Access granted: Coordinator/admin downloading document');
+    }
+
+    if (!hasAccess) {
+      console.warn('[downloadInternDoc] Unauthorized access attempt for doc:', docId, 'by user:', req.user.id);
+      return res.status(403).json({ message: 'Access denied - you cannot view this document' });
     }
 
     // Try to find the file - check multiple possible paths for backward compatibility
