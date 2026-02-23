@@ -101,9 +101,9 @@ module.exports = (sequelize, DataTypes) => {
       modelName: 'Intern',
       tableName: 'interns',
       timestamps: true,
-      createdAt: 'created_at',
-      updatedAt: false,
-      underscored: true,
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+      underscored: false,
     },
   );
 

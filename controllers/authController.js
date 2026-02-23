@@ -7,7 +7,7 @@ const { User, Intern, Company, InternDocuments } = require('../models');
 const db = require('../models');
 const sendCredentialsEmail = require('../utils/sendCredentialsEmail');
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
 /* =========================
    HELPER: SIGN JWT
@@ -19,7 +19,7 @@ const signToken = (payload) => {
       role: payload.role.toLowerCase(),
     },
     JWT_SECRET,
-    { expiresIn: '5m' },
+    { expiresIn: '7d' },
   );
 };
 
@@ -71,19 +71,54 @@ exports.signup = async (req, res, next) => {
 ========================= */
 exports.login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const email = (req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
 
     console.log('🔍 Login attempt:', { email });
 
-    const user = await User.findOne({
+    let user = await User.findOne({
       where: { email: email.toLowerCase() },
     });
+
+    if (!user) {
+      user = await User.findOne({
+        where: literal(`LOWER(TRIM(email)) = ${db.sequelize.escape(email)}`),
+      });
+    }
 
     if (user) {
       console.log('✅ User found:', { id: user.id, email: user.email });
 
-      // ✅ FIXED: Use 'password' not 'passwordHash'
-      const match = await bcrypt.compare(password, user.password);
+      const storedPasswordRaw = user.password || user.passwordHash || '';
+      const storedPassword = String(storedPasswordRaw).trim();
+      const normalizedBcryptHash = storedPassword.startsWith('$2y$')
+        ? `$2b$${storedPassword.slice(4)}`
+        : storedPassword;
+      const passwordCandidates = password.trim() === password ? [password] : [password, password.trim()];
+      let match = false;
+
+      if (
+        normalizedBcryptHash.startsWith('$2a$')
+        || normalizedBcryptHash.startsWith('$2b$')
+        || normalizedBcryptHash.startsWith('$2y$')
+      ) {
+        for (const candidate of passwordCandidates) {
+          if (await bcrypt.compare(candidate, normalizedBcryptHash)) {
+            match = true;
+            break;
+          }
+        }
+      } else if (storedPassword) {
+        match = passwordCandidates.some((candidate) => candidate === storedPassword);
+        if (match) {
+          user.password = await bcrypt.hash(passwordCandidates[0], 10);
+          await user.save();
+        }
+      }
 
       if (!match) {
         console.error('❌ Password mismatch');
@@ -100,6 +135,32 @@ exports.login = async (req, res, next) => {
         firstName: user.firstName,
         lastName: user.lastName,
       });
+
+      const cookieOptions = {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      };
+
+      // ✅ Set domain explicitly for cookie persistence across navigation
+      if (process.env.COOKIE_DOMAIN) {
+        cookieOptions.domain = process.env.COOKIE_DOMAIN;
+        console.log('✅ Cookie domain from env:', cookieOptions.domain);
+      } else if (req.hostname) {
+        const hostParts = req.hostname.split('.');
+        if (hostParts.length >= 2) {
+          cookieOptions.domain = hostParts.slice(-2).join('.');
+          console.log('✅ Auto-detected cookie domain:', cookieOptions.domain);
+        } else {
+          cookieOptions.domain = req.hostname;
+          console.log('✅ Using full hostname:', cookieOptions.domain);
+        }
+      }
+
+      res.cookie('token', token, cookieOptions);
+      console.log('🍪 Cookie set:', { domain: cookieOptions.domain, path: cookieOptions.path, secure: cookieOptions.secure });
 
       return res.json({ token });
     }
@@ -132,6 +193,31 @@ exports.login = async (req, res, next) => {
       });
 
       // Return token and list of supervisors for selection
+      const cookieOptions = {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      };
+
+      // ✅ Set domain explicitly for cookie persistence across navigation
+      if (process.env.COOKIE_DOMAIN) {
+        cookieOptions.domain = process.env.COOKIE_DOMAIN;
+        console.log('✅ Cookie domain from env:', cookieOptions.domain);
+      } else if (req.hostname) {
+        const hostParts = req.hostname.split('.');
+        if (hostParts.length >= 2) {
+          cookieOptions.domain = hostParts.slice(-2).join('.');
+          console.log('✅ Auto-detected cookie domain:', cookieOptions.domain);
+        } else {
+          cookieOptions.domain = req.hostname;
+          console.log('✅ Using full hostname:', cookieOptions.domain);
+        }
+      }
+
+      res.cookie('token', token, cookieOptions);
+
       return res.json({
         token,
         company: {
@@ -608,6 +694,8 @@ exports.addCompany = async (req, res, next) => {
     // 🔐 HASH PASSWORD
     const passwordHash = await bcrypt.hash(tempPassword, 10);
 
+    console.log('[addCompany] Creating company:', { name, email });
+
     // 🏢 CREATE COMPANY
     const company = await Company.create({
       name,
@@ -622,29 +710,41 @@ exports.addCompany = async (req, res, next) => {
       forcePasswordChange: true,
     });
 
+    console.log('[addCompany] Company created successfully:', company.id);
+
     // 📧 SEND EMAIL
-    await sendCredentialsEmail({
-      email: company.email,
-      password: tempPassword,
-      role: 'Supervisor',
-    });
+    try {
+      await sendCredentialsEmail({
+        email: company.email,
+        password: tempPassword,
+        role: 'Supervisor',
+      });
+      console.log('[addCompany] Credentials email sent to:', company.email);
+    } catch (emailErr) {
+      console.warn('[addCompany] Email sending failed (non-critical):', emailErr.message);
+    }
 
     res.status(201).json({
       message: 'Company added and credentials sent',
       company,
     });
   } catch (err) {
+    console.error('❌ [addCompany] Error:', err);
     next(err);
   }
 };
 
 exports.getHTE = async (req, res, next) => {
   try {
+    console.log('[getHTE] Fetching all companies for user:', req.user?.id);
     const companies = await Company.findAll({
       attributes: { exclude: ['password'] },
+      raw: true,
     });
+    console.log('[getHTE] Found', companies.length, 'companies');
     res.json(companies);
   } catch (err) {
+    console.error('❌ [getHTE] Error:', err);
     next(err);
   }
 };

@@ -12,10 +12,21 @@ const { Intern, Company, InternDocuments } = require('../models');
 // POST /api/auth/intern-docs/upload
 async function uploadInternDoc(req, res) {
   try {
+    console.log('[DEBUG] uploadInternDoc - req.user:', req.user?.id);
+    console.log('[DEBUG] uploadInternDoc - req.file:', req.file?.filename);
+    console.log('[DEBUG] uploadInternDoc - req.body:', req.body);
+
     const file = req.file;
 
     if (!file) {
+      console.error('❌ No file provided in request');
       return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    // Verify user is authenticated
+    if (!req.user || !req.user.id) {
+      console.error('❌ User not authenticated or missing user data');
+      return res.status(401).json({ message: 'User authentication failed' });
     }
 
     if (file.originalname.toLowerCase().includes('moa')) {
@@ -32,6 +43,7 @@ async function uploadInternDoc(req, res) {
     });
 
     if (!intern) {
+      console.error('❌ Intern not found for user_id:', req.user.id);
       return res.status(404).json({ message: 'Intern not found' });
     }
 
@@ -52,33 +64,92 @@ async function uploadInternDoc(req, res) {
     }
 
     /* =========================
-       FIND OR CREATE DOC ROW
-    ========================= */
-    const [docs] = await InternDocuments.findOrCreate({
-      where: { intern_id: intern.id },
-      defaults: { intern_id: intern.id },
-    });
-
-    /* =========================
        DELETE OLD FILE (IF ANY)
     ========================= */
-    if (docs[targetColumn]) {
-      const oldPath = path.join(__dirname, '..', 'uploads', docs[targetColumn]);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    const existingDoc = await InternDocuments.findOne({
+      where: { intern_id: intern.id, document_type: targetColumn },
+    });
+
+    if (existingDoc && existingDoc.file_path) {
+      const oldPath = path.join(__dirname, '..', 'uploads', existingDoc.file_path);
+      if (fs.existsSync(oldPath)) {
+        try {
+          fs.unlinkSync(oldPath);
+          console.log('✅ Deleted old file:', existingDoc.file_path);
+        } catch (err) {
+          console.warn('⚠️ Failed to delete old file:', err.message);
+        }
+      }
     }
 
-    docs[targetColumn] = file.filename;
-    docs.uploaded_at = new Date();
-    await docs.save();
+    /* =========================
+       CREATE OR UPDATE DOC RECORD
+    ========================= */
+    const docData = {
+      intern_id: intern.id,
+      document_type: targetColumn,
+      file_name: file.originalname,
+      file_path: file.filename,
+      uploaded_date: new Date(),
+      status: 'Pending',
+    };
+
+    let docs;
+    try {
+      if (existingDoc) {
+        console.log('📝 Updating existing document record:', { intern_id: intern.id, document_type: targetColumn });
+        await existingDoc.update(docData);
+        docs = existingDoc;
+        console.log('✅ Document record updated successfully');
+      } else {
+        console.log('📝 Creating new document record:', { intern_id: intern.id, document_type: targetColumn });
+        docs = await InternDocuments.create(docData);
+        console.log('✅ Document record created successfully with ID:', docs.id);
+      }
+    } catch (dbErr) {
+      console.error('❌ DATABASE ERROR when saving document:', dbErr.message);
+      console.error('   Full error:', dbErr);
+      throw dbErr;
+    }
+
+    // Verify document was saved
+    const verifyDoc = await InternDocuments.findOne({
+      where: { intern_id: intern.id, document_type: targetColumn },
+    });
+
+    if (!verifyDoc) {
+      console.error('❌ CRITICAL: Document was not found in database after save!');
+      return res.status(500).json({
+        message: 'Document upload failed - could not verify save',
+        error: 'Database save verification failed'
+      });
+    }
+
+    console.log('✅ Document verified in database:', {
+      id: verifyDoc.id,
+      intern_id: verifyDoc.intern_id,
+      document_type: verifyDoc.document_type,
+      file_path: verifyDoc.file_path,
+    });
 
     return res.json({
       message: 'Document uploaded successfully',
-      column: targetColumn,
-      file: file.filename,
+      document: {
+        id: verifyDoc.id,
+        document_type: verifyDoc.document_type,
+        file_name: verifyDoc.file_name,
+        file_path: verifyDoc.file_path,
+        uploaded_date: verifyDoc.uploaded_date,
+        status: verifyDoc.status,
+      }
     });
   } catch (err) {
-    console.error('❌ UPLOAD INTERN DOC ERROR:', err);
-    return res.status(500).json({ message: 'Failed to upload document' });
+    console.error('❌ UPLOAD INTERN DOC ERROR:', err.message);
+    console.error('Stack trace:', err.stack);
+    return res.status(500).json({
+      message: 'Failed to upload document',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
   }
 }
 
@@ -88,12 +159,14 @@ async function uploadInternDoc(req, res) {
 // GET /api/auth/intern-docs/me
 async function getInternDocuments(req, res) {
   try {
+    console.log('[getInternDocuments] Fetching for user_id:', req.user.id);
+    
     const intern = await Intern.findOne({
       where: { user_id: req.user.id },
       include: [
         {
           model: Company,
-          as: 'company', // ✅ MUST MATCH Intern.associate
+          as: 'company',
           attributes: ['moaFile'],
           required: false,
         },
@@ -101,20 +174,47 @@ async function getInternDocuments(req, res) {
     });
 
     if (!intern) {
+      console.error('[getInternDocuments] Intern not found for user_id:', req.user.id);
       return res.status(404).json({ message: 'Intern not found' });
     }
 
-    const docs = await InternDocuments.findOne({
+    console.log('[getInternDocuments] Found intern:', intern.id);
+
+    // ✅ Get ALL documents for intern (multiple rows, one per document type)
+    const docsList = await InternDocuments.findAll({
       where: { intern_id: intern.id },
+      order: [['uploaded_date', 'DESC']],
+    });
+
+    console.log('[getInternDocuments] Found', docsList.length, 'document(s) for intern', intern.id);
+    docsList.forEach((doc, idx) => {
+      console.log(`  [${idx}] ${doc.document_type} - ${doc.file_name}`);
+    });
+
+    // Transform array to object keyed by document_type for easier frontend use
+    const docsObject = {};
+    docsList.forEach(doc => {
+      docsObject[doc.document_type] = {
+        id: doc.id,
+        file_name: doc.file_name,
+        file_path: doc.file_path,
+        uploaded_date: doc.uploaded_date,
+        status: doc.status,
+        remarks: doc.remarks,
+      };
     });
 
     return res.json({
-      ...(docs?.dataValues || {}),
+      documents: docsObject,
       MOA: intern.company?.moaFile || null,
     });
   } catch (err) {
-    console.error('❌ GET INTERN DOCS ERROR:', err);
-    return res.status(500).json({ message: 'Failed to fetch documents' });
+    console.error('❌ GET INTERN DOCS ERROR:', err.message);
+    console.error('Stack trace:', err.stack);
+    return res.status(500).json({ 
+      message: 'Failed to fetch documents',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
   }
 }
 

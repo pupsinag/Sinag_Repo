@@ -7,13 +7,27 @@ const { Op } = require('sequelize');
 const { Intern, User, Company, InternEvaluation, InternEvaluationItem, Supervisor } = require('../models');
 
 exports.generateInternEvaluationReport = async (req, res) => {
+  console.log('\n\n========== generateInternEvaluationReport STARTED ==========');
+  console.log('Request body:', JSON.stringify(req.body));
+  console.log('Request user:', req.user ? { id: req.user.id, role: req.user.role } : 'NO USER');
+  
   let doc;
 
   try {
     const { program, year_section } = req.body;
+    console.log('[generateInternEvaluationReport] program=', program, ', year_section=', year_section);
+    
     if (!program) {
+      console.error('[generateInternEvaluationReport] ❌ Program is required');
       return res.status(400).json({ message: 'Program is required' });
     }
+
+    // Fetch adviser name for the program
+    const adviser = await User.findOne({
+      where: { role: 'adviser', program },
+    });
+    const adviserName = adviser ? `${adviser.firstName || ''} ${adviser.lastName || ''}`.trim().toUpperCase() : 'N/A';
+    console.log('[generateInternEvaluationReport] Adviser name:', adviserName);
 
     /* =============================
        FETCH DATA
@@ -26,22 +40,121 @@ exports.generateInternEvaluationReport = async (req, res) => {
     if (year_section) {
       whereClause.year_section = year_section;
     }
+    
+    console.log('[generateInternEvaluationReport] Fetching interns with where clause:', JSON.stringify(whereClause));
 
-    const interns = await Intern.findAll({
+    let interns = []; // Declare outside if block
+    
+    // Step 1: Get base intern data
+    // Detect whether the `user_id` column exists in the `interns` table (production schema may differ).
+    const internTableDesc = await sequelize.getQueryInterface().describeTable('interns').catch(() => null);
+    const hasUserIdColumn = !!(internTableDesc && (internTableDesc.user_id || internTableDesc.userId));
+    if (!hasUserIdColumn) {
+      console.warn('[generateInternEvaluationReport] ⚠️ interns.user_id column not present in DB — user names will be shown as N/A');
+    }
+    const internAttributes = ['id', 'company_id', 'supervisor_id', 'program', 'year_section'];
+    if (hasUserIdColumn) internAttributes.splice(1, 0, 'user_id'); // keep user_id second for easier mapping
+
+    const baseInterns = await Intern.findAll({
+      attributes: internAttributes,
       where: whereClause,
-      include: [
-        { model: User, as: 'User', attributes: ['firstName', 'lastName', 'email'] },
-        { model: Company, as: 'company', attributes: ['name'] },
-        { model: Supervisor, as: 'Supervisor', attributes: ['name'] },
-        {
-          model: InternEvaluation,
-          as: 'Evaluations',
-          attributes: ['id', 'intern_id', 'internName', 'section', 'hteName', 'jobDescription', 'totalScore', 'date'],
-          include: [{ model: InternEvaluationItem, as: 'items', attributes: ['category', 'score'] }],
-        },
-      ],
-      order: [[{ model: User, as: 'User' }, 'lastName', 'ASC']],
+      raw: true,
     });
+    console.log(`[generateInternEvaluationReport] Step 1: Found ${baseInterns.length} base interns (hasUserId=${hasUserIdColumn})`);
+
+    let userMap = {};
+    if (baseInterns.length > 0 && hasUserIdColumn) {
+      // Step 2: Get User data (only if interns.user_id exists)
+      const userIds = [...new Set(baseInterns.map(i => i.user_id).filter(Boolean))];
+      if (userIds.length > 0) {
+        const users = await User.findAll({
+          attributes: ['id', 'firstName', 'lastName'],
+          where: { id: userIds },
+          raw: true,
+        });
+        userMap = Object.fromEntries(users.map(u => [u.id, u]));
+        console.log(`[generateInternEvaluationReport] Step 2: Fetched ${users.length} users`);
+      } else {
+        console.log('[generateInternEvaluationReport] Step 2: No user_ids found on interns; skipping user lookup');
+      }
+    } else if (baseInterns.length > 0) {
+      console.log('[generateInternEvaluationReport] Step 2: Skipping user lookup because interns.user_id is not present in DB');
+    }
+
+    if (baseInterns.length > 0) {
+
+      // Step 3: Get Company and Supervisor data
+      const companyIds = [...new Set(baseInterns.map(i => i.company_id).filter(Boolean))];
+      const supervisorIds = [...new Set(baseInterns.map(i => i.supervisor_id).filter(Boolean))];
+      
+      const companies = await Company.findAll({
+        attributes: ['id', 'name'],
+        where: { id: companyIds },
+        raw: true,
+      });
+      const companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
+      
+      const supervisors = await Supervisor.findAll({
+        attributes: ['id', 'name'],
+        where: { id: supervisorIds },
+        raw: true,
+      });
+      const supervisorMap = Object.fromEntries(supervisors.map(s => [s.id, s]));
+      console.log(`[generateInternEvaluationReport] Step 3: Fetched ${companies.length} companies and ${supervisors.length} supervisors`);
+
+      // Step 4: Get Evaluations and Evaluation Items
+      const internIds = baseInterns.map(i => i.id);
+      const evaluations = await InternEvaluation.findAll({
+        attributes: ['id', 'intern_id'],
+        where: { intern_id: internIds },
+        raw: true,
+      });
+      const evalIds = evaluations.map(e => e.id);
+
+      let evaluationItems = [];
+      if (evalIds.length > 0) {
+        const { Op } = require('sequelize');
+        evaluationItems = await InternEvaluationItem.findAll({
+          attributes: ['id', 'evaluationId', 'category', 'score', 'remarks'],
+          where: { evaluationId: { [Op.in]: evalIds } },
+          raw: true,
+        });
+      }
+      console.log(`[generateInternEvaluationReport] Fetched ${evaluationItems.length} evaluation items for ${evalIds.length} evaluations`);
+      
+      // Map evaluations to interns and attach items
+      const evaluationsByIntern = {};
+      evaluations.forEach(evaluation => {
+        const evaluationWithItems = {
+          ...evaluation,
+          items: evaluationItems.filter(item => item.evaluationId === evaluation.id),
+        };
+        if (!evaluationsByIntern[evaluation.intern_id]) {
+          evaluationsByIntern[evaluation.intern_id] = [];
+        }
+        evaluationsByIntern[evaluation.intern_id].push(evaluationWithItems);
+      });
+      console.log(`[generateInternEvaluationReport] Step 4: Fetched ${evaluations.length} evaluations with ${evaluationItems.length} items`);
+
+      // Enrich interns with related data
+      interns = baseInterns.map(intern => ({
+        ...intern,
+        User: userMap[intern.user_id] || {},
+        company: companyMap[intern.company_id] || {},
+        Supervisor: supervisorMap[intern.supervisor_id] || {},
+        Evaluations: evaluationsByIntern[intern.id] || [],
+      }));
+
+      // Sort by last name
+      interns.sort((a, b) => {
+        const nameA = (a.User?.lastName || '').toLowerCase();
+        const nameB = (b.User?.lastName || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+      console.log('[generateInternEvaluationReport] Interns sorted by last name');
+    }
+    
+    console.log(`[generateInternEvaluationReport] Total enriched interns: ${baseInterns.length}`);
 
     /* =============================
        PDF SETUP
@@ -163,8 +276,9 @@ exports.generateInternEvaluationReport = async (req, res) => {
         y += 26;
         doc.fillColor('black').font('Helvetica').fontSize(9);
       }
-      // Defensive: skip if no User
-      if (!intern.User) return;
+      // Defensive: if no User metadata is available, still render the row with 'N/A' for the name.
+      // Production DBs may lack interns.user_id; do not skip the entire row.
+      // (previous behavior: `if (!intern.User) return;` - removed)
       const evaluation = Array.isArray(intern.Evaluations) ? intern.Evaluations[0] : null;
       const items = evaluation && Array.isArray(evaluation.items) ? evaluation.items : [];
       const categoryScores = {
@@ -225,8 +339,10 @@ exports.generateInternEvaluationReport = async (req, res) => {
 
     doc.end();
   } catch (err) {
-    console.error('❌ INTERN EVALUATION REPORT ERROR:', err);
+    console.error('\n❌ INTERN EVALUATION REPORT ERROR');
+    console.error('Error message:', err.message);
     console.error('Error stack:', err.stack);
+    console.error('===== END ERROR =====\n');
     if (doc) doc.end();
     if (!res.headersSent) {
       res.status(500).json({

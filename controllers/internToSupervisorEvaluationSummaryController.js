@@ -117,30 +117,109 @@ exports.getInternEvaluations = async (programId, year) => {
 };
 
 exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
+  console.log('\n\n========== generateInternToSupervisorEvaluationSummary STARTED ==========');
+  console.log('Request body:', JSON.stringify(req.body));
+  console.log('Request user:', req.user ? { id: req.user.id, role: req.user.role } : 'NO USER');
+  
   let doc;
   try {
     // Fetch all evaluations (no program filter)
-    const evaluations = await SupervisorEvaluation.findAll({
-      include: [
-        {
-          model: Intern,
-          as: 'intern',
-          include: [
-            { model: User, as: 'User' },
-            { model: require('../models').Supervisor, as: 'Supervisor' }, // <-- Capital S
-          ],
-        },
-        {
-          model: Company,
-          as: 'supervisorCompany',
-        },
-      ],
-      order: [[{ model: Intern, as: 'intern' }, 'id', 'ASC']],
+    console.log('[generateInternToSupervisorEvaluationSummary] Fetching supervisor evaluations');
+    
+    let evaluations = []; // Declare outside if block
+    
+    // Step 1: Get base evaluations
+    // Only select columns that definitely exist on the table to avoid schema mismatch errors
+    const baseEvaluations = await SupervisorEvaluation.findAll({
+      // Be conservative — only select columns we rely on and that are present in prod
+      attributes: ['id', 'intern_id', 'supervisor_id'],
+      raw: true,
     });
+    console.log(`[generateInternToSupervisorEvaluationSummary] Step 1: Found ${baseEvaluations.length} base evaluations`);
 
-    // Fetch all SupervisorEvaluationItems
+    evaluations = baseEvaluations;
+    
+    if (baseEvaluations.length > 0) {
+      // Step 2: Get Intern and related data
+      const internIds = [...new Set(baseEvaluations.map(e => e.intern_id).filter(Boolean))];
+      const interns = await Intern.findAll({
+        where: { id: internIds },
+        attributes: ['id', 'user_id', 'supervisor_id', 'company_id'], // include company_id as a fallback
+        raw: true,
+      });
+      const internMap = Object.fromEntries(interns.map(i => [i.id, i]));
+
+      // Step 2b: Get User data
+      const userIds = [...new Set(interns.map(i => i.user_id).filter(Boolean))];
+      const users = await User.findAll({
+        where: { id: userIds },
+        attributes: ['id', 'firstName', 'lastName'],
+        raw: true,
+      });
+      const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+      // Step 2c: Get Supervisor data
+      const supervisorIds = [...new Set(interns.map(i => i.supervisor_id).filter(Boolean))];
+      const supervisors = await require('../models').Supervisor.findAll({
+        where: { id: supervisorIds },
+        attributes: ['id', 'name'],
+        raw: true,
+      });
+      const supervisorMap = Object.fromEntries(supervisors.map(s => [s.id, s]));
+      console.log(`[generateInternToSupervisorEvaluationSummary] Step 2: Fetched ${interns.length} interns, ${users.length} users, ${supervisors.length} supervisors`);
+
+      // Step 3: Get Company data (collect from both evaluations and interns for compatibility)
+      const evalCompanyIds = baseEvaluations.map(e => e.company_id).filter(Boolean);
+      const internCompanyIds = interns.map(i => i.company_id).filter(Boolean);
+      const companyIds = [...new Set([...evalCompanyIds, ...internCompanyIds])];
+      const companies = companyIds.length > 0
+        ? await Company.findAll({ where: { id: companyIds }, attributes: ['id', 'name'], raw: true })
+        : [];
+      const companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
+      console.log(`[generateInternToSupervisorEvaluationSummary] Step 3: Fetched ${companies.length} companies`);
+
+      // Step 4: Enrich evaluations with related data
+      evaluations = baseEvaluations.map((ev) => {
+        const intern = internMap[ev.intern_id] || {};
+        const user = userMap[intern.user_id] || {};
+        const supervisor = supervisorMap[intern.supervisor_id] || {};
+        // company may come from the evaluation (if present) or from the intern record
+        const company = (ev.company_id && companyMap[ev.company_id]) || (intern.company_id && companyMap[intern.company_id]) || {};
+
+        return {
+          ...ev,
+          intern: {
+            id: intern.id,
+            user_id: intern.user_id,
+            supervisor_id: intern.supervisor_id,
+            User: user,
+            Supervisor: supervisor,
+            company_id: intern.company_id || null,
+          },
+          supervisorCompany: company,
+        };
+      });
+      console.log(`[generateInternToSupervisorEvaluationSummary] Step 4: Enriched ${evaluations.length} evaluations`);
+    }
+    
+    console.log(`[generateInternToSupervisorEvaluationSummary] Total evaluations: ${evaluations.length}`);
+
+    // Fetch all SupervisorEvaluationItems (limit attributes to avoid timestamp/name mismatches)
     const SupervisorEvaluationItem = require('../models')['SupervisorEvaluationItem'];
-    const allItems = await SupervisorEvaluationItem.findAll();
+    let allItems = [];
+    try {
+      // Use raw:true so we get plain objects and avoid instance .get() issues
+      allItems = await SupervisorEvaluationItem.findAll({ attributes: ['id','evaluationId','section','indicator','rating'], raw: true });
+    } catch (err) {
+      const msg = (err && err.message) ? err.message : String(err);
+      // If the table is missing on production, log a warning and continue with empty items
+      if (msg.includes("doesn't exist") || msg.includes('ER_NO_SUCH_TABLE') || msg.toLowerCase().includes('no such table')) {
+        console.warn('[generateInternToSupervisorEvaluationSummary] supervisor_evaluation_items table missing in DB — continuing with empty items');
+      } else {
+        console.error('[generateInternToSupervisorEvaluationSummary] Error loading SupervisorEvaluationItem:', err);
+      }
+      allItems = [];
+    }
 
     // Get unique item sections/indicators for columns (e.g., I, II, III, IV, V)
     const itemLabels = [];
@@ -372,10 +451,12 @@ exports.generateInternToSupervisorEvaluationSummary = async (req, res) => {
     doc.end();
   } catch (err) {
     // Enhanced error logging for debugging
-    console.error('❌ INTERN TO SUPERVISOR EVALUATION SUMMARY ERROR:', err);
+    console.error('\n❌ INTERN TO SUPERVISOR EVALUATION SUMMARY ERROR');
+    console.error('Error message:', err.message);
     if (err.stack) {
-      console.error(err.stack);
+      console.error('Error stack:', err.stack);
     }
+    console.error('===== END ERROR =====\n');
     if (doc) doc.end();
     if (!res.headersSent) {
       res.status(500).json({

@@ -10,15 +10,18 @@ exports.generateInternToHTEEvaluationSummary = async (req, res) => {
   try {
     // Fetch all evaluations (no program filter)
     const evaluations = await HTEEvaluation.findAll({
+      attributes: ['id', 'ratings', 'company_id', 'intern_id'],
       include: [
         {
           model: Company,
           as: 'hteCompany',
+          attributes: ['id', 'name'],
         },
         {
           model: Intern,
           as: 'intern',
-          include: [{ model: User, as: 'User' }],
+          attributes: ['id', 'user_id'],
+          include: [{ model: User, as: 'User', attributes: ['id', 'firstName', 'lastName'] }],
         },
       ],
     });

@@ -74,37 +74,96 @@ exports.getMyCompany = async (req, res) => {
 ================================================= */
 exports.getInternsForAdviser = async (req, res) => {
   try {
+    const userRole = req.user.role ? req.user.role.toLowerCase() : '';
+    console.log('\n[getInternsForAdviser] ===== START =====');
+    console.log('[getInternsForAdviser] User role:', userRole, 'User ID:', req.user.id);
+
+    let whereCondition = {};
+
+    // 🟢 COORDINATOR/SUPERADMIN: see ALL interns
+    if (userRole === 'coordinator' || userRole === 'superadmin') {
+      console.log('[getInternsForAdviser] Mode: Coordinator/Admin - Fetching ALL interns');
+      whereCondition = {};
+    }
+    // 🟢 ADVISER: see only their interns
+    else if (userRole === 'adviser') {
+      console.log('[getInternsForAdviser] Mode: Adviser - Fetching interns for adviser:', req.user.id);
+      whereCondition = { adviser_id: req.user.id };
+    }
+
+    console.log('[getInternsForAdviser] Where condition:', JSON.stringify(whereCondition));
+
+    // Step 1: Get basic interns first
+    console.log('[getInternsForAdviser] Step 1: Fetching interns from database...');
     const interns = await Intern.findAll({
-      include: [
-        {
-          model: User,
-          as: 'User',
-          attributes: ['studentId', 'lastName', 'firstName', 'mi', 'email', 'program'],
-        },
-        {
-          model: Company,
-          as: 'company',
-          attributes: { exclude: ['password'] }, // ✅ Include all fields including supervisorName
-          required: false,
-        },
-        {
-          model: InternDocuments,
-          as: 'InternDocuments',
-          required: false,
-        },
-        {
-          model: require('../models').Supervisor,
-          as: 'Supervisor',
-          attributes: ['id', 'name'],
-          required: false,
-        },
-      ],
-      order: [[{ model: User, as: 'User' }, 'lastName', 'ASC']],
+      where: whereCondition,
+      raw: true,
     });
 
-    res.json(interns);
+    console.log(`[getInternsForAdviser] Step 1 COMPLETE: Found ${interns.length} interns`);
+    
+    if (interns.length === 0) {
+      console.log('[getInternsForAdviser] No interns found, returning empty array');
+      return res.json([]);
+    }
+
+    console.log('[getInternsForAdviser] Intern IDs:', interns.map((i) => i.id).join(', '));
+
+    // Step 2: Get User data for each intern
+    console.log('[getInternsForAdviser] Step 2: Fetching user data...');
+    const internIds = interns.map((i) => i.user_id).filter(Boolean);
+    const users = {};
+    
+    if (internIds.length > 0) {
+      console.log('[getInternsForAdviser] User IDs to fetch:', internIds.join(', '));
+      const userData = await User.findAll({
+        where: { id: internIds },
+        attributes: ['id', 'studentId', 'lastName', 'firstName', 'mi', 'email', 'program'],
+        raw: true,
+      });
+      console.log(`[getInternsForAdviser] Step 2 COMPLETE: Found ${userData.length} users`);
+      
+      userData.forEach((u) => {
+        users[u.id] = u;
+      });
+    }
+
+    // Step 3: Get Company data for each intern
+    console.log('[getInternsForAdviser] Step 3: Fetching company data...');
+    const companyIds = interns.map((i) => i.company_id).filter(Boolean);
+    const companies = {};
+    
+    if (companyIds.length > 0) {
+      console.log('[getInternsForAdviser] Company IDs to fetch:', companyIds.join(', '));
+      const companyData = await Company.findAll({
+        where: { id: companyIds },
+        attributes: ['id', 'name', 'email', 'address', 'supervisorName', 'natureOfBusiness'],
+        raw: true,
+      });
+      console.log(`[getInternsForAdviser] Step 3 COMPLETE: Found ${companyData.length} companies`);
+      
+      companyData.forEach((c) => {
+        companies[c.id] = c;
+      });
+    } else {
+      console.log('[getInternsForAdviser] No company IDs found');
+    }
+
+    // Step 4: Enrich interns with User and Company data
+    console.log('[getInternsForAdviser] Step 4: Enriching intern data...');
+    const enrichedInterns = interns.map((intern) => ({
+      ...intern,
+      User: users[intern.user_id] || null,
+      company: intern.company_id ? companies[intern.company_id] || null : null,
+    }));
+
+    console.log(`[getInternsForAdviser] ===== SUCCESS: Returning ${enrichedInterns.length} enriched interns =====\n`);
+    res.json(enrichedInterns);
   } catch (err) {
-    console.error('❌ GET INTERNS FOR ADVISER ERROR:', err);
-    res.status(500).json({ message: 'Failed to fetch interns' });
+    console.error('\n❌ GET INTERNS FOR ADVISER ERROR');
+    console.error('Message:', err.message);
+    console.error('Stack:', err.stack);
+    console.error('===== END ERROR =====\n');
+    res.status(500).json({ message: 'Failed to fetch interns', error: err.message });
   }
 };

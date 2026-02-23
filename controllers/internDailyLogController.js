@@ -46,18 +46,52 @@ exports.createDailyLog = async (req, res) => {
     /* =========================
        AUTO DAY NUMBER
     ========================= */
-    const day_no = (await InternDailyLog.count({ where: { intern_id: intern.id } })) + 1;
+    let day_no;
+    try {
+      day_no = (await InternDailyLog.count({ where: { intern_id: intern.id } })) + 1;
+    } catch (err) {
+      // If day_no column doesn't exist, use legacy count query
+      console.warn('⚠️ day_no count failed, using legacy schema count');
+      const sequelize = require('../config/database');
+      const { QueryTypes } = require('sequelize');
+      const count = await sequelize.query(
+        'SELECT COUNT(*) as cnt FROM intern_daily_logs WHERE intern_id = ?',
+        {
+          replacements: [intern.id],
+          type: QueryTypes.SELECT
+        }
+      );
+      day_no = (count[0].cnt || 0) + 1;
+    }
     console.log('📊 Day number auto-calculated:', day_no);
 
     /* =========================
        PREVENT DUPLICATE DATE
     ========================= */
-    const exists = await InternDailyLog.findOne({
-      where: {
-        intern_id: intern.id,
-        log_date,
-      },
-    });
+    let exists = null;
+    try {
+      exists = await InternDailyLog.findOne({
+        where: {
+          intern_id: intern.id,
+          log_date,
+        },
+      });
+    } catch (err) {
+      // If log_date column doesn't exist, check using legacy schema column
+      console.warn('⚠️ Duplicate check failed, using legacy schema check');
+      const sequelize = require('../config/database');
+      const { QueryTypes } = require('sequelize');
+      const dateStr = log_date instanceof Date ? log_date.toISOString().split('T')[0] : log_date;
+      
+      const result = await sequelize.query(
+        'SELECT id FROM intern_daily_logs WHERE intern_id = ? AND (date = ? OR logDate = ?) LIMIT 1',
+        {
+          replacements: [intern.id, dateStr, dateStr],
+          type: QueryTypes.SELECT
+        }
+      );
+      exists = result.length > 0 ? { id: result[0].id } : null;
+    }
 
     if (exists) {
       console.error('❌ Duplicate log found for date:', log_date);
@@ -99,18 +133,73 @@ exports.createDailyLog = async (req, res) => {
     /* =========================
        CREATE LOG IN DATABASE
     ========================= */
-    const log = await InternDailyLog.create({
-      intern_id: intern.id,
-      day_no,
-      log_date,
-      time_in,
-      time_out,
-      total_hours,
-      tasks_accomplished,
-      skills_enhanced: skills_enhanced || null,
-      learning_applied: learning_applied || null,
-      photo_path: photo_paths, // ✅ Save array of photo paths to database
-    });
+    let log;
+    try {
+      log = await InternDailyLog.create({
+        intern_id: intern.id,
+        day_no,
+        log_date,
+        time_in,
+        time_out,
+        total_hours,
+        tasks_accomplished,
+        skills_enhanced: skills_enhanced || null,
+        learning_applied: learning_applied || null,
+        photo_path: photo_paths, // ✅ Save array of photo paths to database
+      });
+    } catch (err) {
+      // If new schema fails, try legacy schema insert
+      console.warn('⚠️ New schema insert failed, attempting legacy schema insert');
+      console.warn('   Error:', err.message);
+      
+      try {
+        const sequelize = require('../config/database');
+        const { QueryTypes } = require('sequelize');
+        const dateStr = log_date instanceof Date ? log_date.toISOString().split('T')[0] : log_date;
+        
+        const result = await sequelize.query(
+          `INSERT INTO intern_daily_logs 
+           (intern_id, date, logDate, hours_worked, task_description, notes, photos, status, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          {
+            replacements: [
+              intern.id,
+              dateStr,
+              dateStr,
+              total_hours,
+              tasks_accomplished,
+              skills_enhanced || null,
+              photo_paths && photo_paths.length > 0 ? photo_paths[0] : null, // Use NULL instead of empty string for constraint compatibility
+              'Pending'
+            ],
+            type: QueryTypes.INSERT
+          }
+        );
+        
+        console.log('✅ Legacy schema insert successful, ID:', result);
+        
+        // Return a mock log object matching expected format
+        log = {
+          id: result,
+          intern_id: intern.id,
+          log_date: dateStr,
+          time_in,
+          time_out,
+          total_hours,
+          tasks_accomplished,
+          skills_enhanced: skills_enhanced || null,
+          learning_applied: learning_applied || null,
+          photo_path: photo_paths,
+          supervisor_status: 'Pending',
+          adviser_status: 'Pending',
+        };
+      } catch (legacyErr) {
+        console.error('❌ Both new and legacy schema inserts failed!');
+        console.error('   New schema error:', err.message);
+        console.error('   Legacy schema error:', legacyErr.message);
+        throw legacyErr;
+      }
+    }
 
     console.log('✅ Daily log created successfully');
     console.log('   ID:', log.id);
@@ -122,7 +211,10 @@ exports.createDailyLog = async (req, res) => {
   } catch (err) {
     console.error('❌ CREATE DAILY LOG ERROR:', err.message);
     console.error('Stack trace:', err.stack);
-    return res.status(500).json({ message: 'Failed to create daily log' });
+    return res.status(500).json({ 
+      message: 'Failed to create daily log',
+      error: err.message // Include detailed error for debugging
+    });
   }
 };
 
@@ -147,6 +239,44 @@ exports.getDailyLogs = async (req, res) => {
     const logs = await InternDailyLog.findAll({
       where: { intern_id: intern.id },
       order: [['log_date', 'DESC']],
+    }).catch(async (err) => {
+      // If new columns don't exist yet, use raw query mapping old columns to new ones
+      if (err.message.includes("Unknown column")) {
+        console.warn('⚠️ Column not found, using legacy schema fallback query');
+        const sequelize = require('../config/database');
+        const { QueryTypes } = require('sequelize');
+        const rawLogs = await sequelize.query(
+          `SELECT 
+            id, 
+            intern_id, 
+            COALESCE(logDate, DATE(date), CURDATE()) as log_date,
+            '08:00:00' as time_in,
+            TIME(DATE_ADD(CONCAT(CURDATE(), ' 08:00:00'), INTERVAL COALESCE(hours_worked, 8) HOUR)) as time_out,
+            COALESCE(hours_worked, 0) as total_hours,
+            COALESCE(task_description, '') as tasks_accomplished,
+            COALESCE(notes, '') as skills_enhanced,
+            NULL as learning_applied,
+            JSON_ARRAY(NULLIF(photos, '')) as photo_path,
+            COALESCE(status, 'Pending') as supervisor_status,
+            'Pending' as adviser_status,
+            COALESCE(approval_remarks, '') as supervisor_comment,
+            NULL as adviser_comment,
+            NULL as supervisor_approved_at,
+            NULL as adviser_approved_at,
+            createdAt,
+            updatedAt
+           FROM intern_daily_logs 
+           WHERE intern_id = ?
+           ORDER BY COALESCE(logDate, DATE(date), CURDATE()) DESC`,
+          {
+            replacements: [intern.id],
+            type: QueryTypes.SELECT,
+          }
+        );
+        return rawLogs;
+      } else {
+        throw err; // Re-throw if it's a different error
+      }
     });
 
     // ✅ NORMALIZE photo paths (handle JSON string, old 'uploads/filename' format & convert to array)
@@ -201,68 +331,117 @@ exports.getInternDailyLogsForAdviser = async (req, res) => {
     const { id } = req.params;
 
     console.log('\n=== GET DAILY LOGS (ADVISER) ===');
-    console.log('Fetching logs for intern_id:', id);
+      console.log('Requested intern_id (raw):', id);
 
-    /* =========================
-       FETCH LOGS FOR SPECIFIC INTERN
-    ========================= */
-    const logs = await InternDailyLog.findAll({
-      where: { intern_id: id },
-      order: [['log_date', 'DESC']],
-    });
-
-    console.log('✅ Found', logs.length, 'logs');
-
-    // ✅ NORMALIZE photo paths (handle JSON string, old 'uploads/filename' format & convert to array)
-    const normalizedLogs = logs.map((log) => {
-      if (log.photo_path) {
-        let pathData = log.photo_path;
-        
-        // If it's a JSON string, parse it first
-        if (typeof pathData === 'string' && (pathData.startsWith('[') || pathData.startsWith('{'))) {
-          try {
-            pathData = JSON.parse(pathData);
-            console.log(`   Parsed JSON string:`, pathData);
-          } catch (e) {
-            console.log(`   Failed to parse JSON, treating as string:`, pathData);
-          }
-        }
-        
-        // Now handle the data
-        if (typeof pathData === 'string') {
-          // Old format - single string path
-          const cleanPath = pathData.startsWith('uploads/') 
-            ? pathData.replace('uploads/', '')
-            : pathData;
-          log.photo_path = [cleanPath];
-          console.log(`   Converted string path to: [${cleanPath}]`);
-        } else if (Array.isArray(pathData)) {
-          // Already an array - clean up each path
-          log.photo_path = pathData.map(p => {
-            if (typeof p === 'string') {
-              return p.startsWith('uploads/') ? p.replace('uploads/', '') : p;
-            }
-            return p;
-          });
-          console.log(`   Array paths cleaned:`, log.photo_path);
-        }
+      // Validate intern id param
+      const internId = Number(id);
+      if (!Number.isInteger(internId) || internId <= 0) {
+        console.error('❌ Invalid intern id parameter:', id);
+        return res.status(400).json({ message: 'Invalid intern id' });
       }
-      return log;
-    });
 
-    // Debug: Show photo paths
-    normalizedLogs.forEach((log, idx) => {
-      console.log(`   Log ${idx + 1}: photo_path = ${log.photo_path || '(none)'}`);
-    });
-    console.log('');
+      /* =========================
+         FETCH LOGS FOR SPECIFIC INTERN
+      ========================= */
+      const logs = await InternDailyLog.findAll({
+        where: { intern_id: internId },
+        order: [['log_date', 'DESC']],
+      }).catch(async (err) => {
+        // If new columns don't exist yet, use raw query mapping old columns to new ones
+        if (err.message.includes("Unknown column")) {
+          console.warn('⚠️ Column not found, using legacy schema fallback query');
+          const sequelize = require('../config/database');
+          const { QueryTypes } = require('sequelize');
+          const rawLogs = await sequelize.query(
+            `SELECT 
+              id, 
+              intern_id, 
+              COALESCE(logDate, DATE(date), CURDATE()) as log_date,
+              '08:00:00' as time_in,
+              TIME(DATE_ADD(CONCAT(CURDATE(), ' 08:00:00'), INTERVAL COALESCE(hours_worked, 8) HOUR)) as time_out,
+              COALESCE(hours_worked, 0) as total_hours,
+              COALESCE(task_description, '') as tasks_accomplished,
+              COALESCE(notes, '') as skills_enhanced,
+              NULL as learning_applied,
+              JSON_ARRAY(NULLIF(photos, '')) as photo_path,
+              COALESCE(status, 'Pending') as supervisor_status,
+              'Pending' as adviser_status,
+              COALESCE(approval_remarks, '') as supervisor_comment,
+              NULL as adviser_comment,
+              NULL as supervisor_approved_at,
+              NULL as adviser_approved_at,
+              createdAt,
+              updatedAt
+             FROM intern_daily_logs 
+             WHERE intern_id = ?
+             ORDER BY COALESCE(logDate, DATE(date), CURDATE()) DESC`,
+            {
+              replacements: [internId],
+              type: QueryTypes.SELECT,
+            }
+          );
+          return rawLogs;
+        } else {
+          throw err; // Re-throw if it's a different error
+        }
+      });
 
-    return res.json(normalizedLogs);
-  } catch (err) {
-    console.error('❌ GET INTERN DAILY LOGS ERROR:', err.message);
-    return res.status(500).json({ message: 'Failed to fetch daily logs' });
-  }
+      console.log('✅ Found', logs.length, 'logs for intern_id:', internId);
+
+      // Normalize and safely transform each log to plain object
+      const normalizedLogs = logs.map((instance) => {
+        // Convert Sequelize instance to plain object to avoid accidental prototype issues
+        const log = typeof instance.toJSON === 'function' ? instance.toJSON() : { ...instance };
+
+        try {
+          if (log.photo_path) {
+            let pathData = log.photo_path;
+
+            // If it's a JSON string, parse it first
+            if (typeof pathData === 'string' && (pathData.startsWith('[') || pathData.startsWith('{'))) {
+              try {
+                pathData = JSON.parse(pathData);
+                console.log(`   Parsed JSON string for log ${log.id}:`, pathData);
+              } catch (e) {
+                console.warn(`   Failed to parse photo_path for log ${log.id}, treating as raw string`);
+              }
+            }
+
+            // Now normalize into an array of clean filenames or leave null on unexpected types
+            if (typeof pathData === 'string') {
+              const cleanPath = pathData.startsWith('uploads/') ? pathData.replace('uploads/', '') : pathData;
+              log.photo_path = [cleanPath];
+            } else if (Array.isArray(pathData)) {
+              log.photo_path = pathData.map((p) => (typeof p === 'string' ? (p.startsWith('uploads/') ? p.replace('uploads/', '') : p) : p));
+            } else {
+              console.warn(`   Unexpected photo_path type for log ${log.id}:`, typeof pathData);
+              log.photo_path = null;
+            }
+          }
+        } catch (normalizeErr) {
+          console.error(`   Error normalizing photo_path for log ${log.id}:`, normalizeErr);
+          log.photo_path = null;
+        }
+
+        return log;
+      });
+
+      // Lightweight debug: first 5 photo_path values
+      normalizedLogs.slice(0, 5).forEach((l, idx) => {
+        console.log(`   Log[${idx}] id=${l.id} photo_path=`, l.photo_path || '(none)');
+      });
+
+      return res.json(normalizedLogs);
+    } catch (err) {
+      // Log full error for debugging
+      console.error('❌ GET INTERN DAILY LOGS ERROR:', err);
+      return res.status(500).json({ message: 'Failed to fetch daily logs', error: err.message });
+    }
 };
 
+/* =========================
+   APPROVE LOG BY ADVISER
+========================= */
 exports.approveLogByAdviser = async (req, res) => {
   try {
     const { InternDailyLog } = getModels();
@@ -394,6 +573,44 @@ exports.getCompanyInternDailyLogs = async (req, res) => {
     const logs = await InternDailyLog.findAll({
       where: { intern_id: internId },
       order: [['log_date', 'DESC']],
+    }).catch(async (err) => {
+      // If new columns don't exist yet, use raw query mapping old columns to new ones
+      if (err.message.includes("Unknown column")) {
+        console.warn('⚠️ Column not found, using legacy schema fallback query');
+        const sequelize = require('../config/database');
+        const { QueryTypes } = require('sequelize');
+        const rawLogs = await sequelize.query(
+          `SELECT 
+            id, 
+            intern_id, 
+            COALESCE(logDate, DATE(date), CURDATE()) as log_date,
+            '08:00:00' as time_in,
+            TIME(DATE_ADD(CONCAT(CURDATE(), ' 08:00:00'), INTERVAL COALESCE(hours_worked, 8) HOUR)) as time_out,
+            COALESCE(hours_worked, 0) as total_hours,
+            COALESCE(task_description, '') as tasks_accomplished,
+            COALESCE(notes, '') as skills_enhanced,
+            NULL as learning_applied,
+            JSON_ARRAY(NULLIF(photos, '')) as photo_path,
+            COALESCE(status, 'Pending') as supervisor_status,
+            'Pending' as adviser_status,
+            COALESCE(approval_remarks, '') as supervisor_comment,
+            NULL as adviser_comment,
+            NULL as supervisor_approved_at,
+            NULL as adviser_approved_at,
+            createdAt,
+            updatedAt
+           FROM intern_daily_logs 
+           WHERE intern_id = ?
+           ORDER BY COALESCE(logDate, DATE(date), CURDATE()) DESC`,
+          {
+            replacements: [internId],
+            type: QueryTypes.SELECT,
+          }
+        );
+        return rawLogs;
+      } else {
+        throw err; // Re-throw if it's a different error
+      }
     });
 
     console.log(`✅ Found ${logs.length} logs for intern`);

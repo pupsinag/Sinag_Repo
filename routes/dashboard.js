@@ -22,9 +22,11 @@ router.get('/companies', dashboardController.getCompanies);
 router.get('/kpis', dashboardController.getKpis);
 router.get('/adviser-programs', async (req, res) => {
   try {
-    // Get all unique programs from users table (role: Adviser)
-    const programs = await require('../models').User.findAll({
-      where: { role: 'Adviser' },
+    // Get all unique programs from users table (role: Adviser, case-insensitive)
+    const { User } = require('../models');
+    const Sequelize = require('sequelize');
+    const programs = await User.findAll({
+      where: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('role')), Sequelize.Op.eq, 'adviser'),
       attributes: ['program'],
       group: ['program'],
       raw: true,
@@ -32,6 +34,7 @@ router.get('/adviser-programs', async (req, res) => {
     // Return all non-null, unique programs
     res.json(programs.map((p) => p.program).filter(Boolean));
   } catch (err) {
+    console.error('❌ /adviser-programs error:', err);
     res.status(500).json({ message: 'Failed to fetch programs' });
   }
 });

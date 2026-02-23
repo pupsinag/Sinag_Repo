@@ -9,6 +9,7 @@ const consentController = require('../controllers/consentController');
 const companyDashboardController = require('../controllers/companyDashboardController');
 
 const authMiddleware = require('../middleware/authMiddleware');
+const { ensureDBConnection } = require('../middleware/dbHealthCheck');
 const upload = require('../middleware/upload');
 
 console.log('✅ Auth routes loaded');
@@ -20,13 +21,15 @@ router.get('/test', (req, res) => {
   res.json({ message: 'auth route working' });
 });
 
-router.post('/signup', authController.signup);
-router.post('/login', authController.login);
+// Apply DB health check to critical endpoints
+router.post('/signup', ensureDBConnection, authController.signup);
+router.post('/login', ensureDBConnection, authController.login);
 
 /* =========================
    PROTECTED ROUTES
 ========================= */
 router.use(authMiddleware(['superadmin', 'coordinator', 'adviser', 'intern', 'company']));
+router.use(ensureDBConnection);
 
 /* =========================
    USER PROFILE
@@ -82,11 +85,32 @@ router.post('/consent-save', authMiddleware(['intern']), consentController.saveC
    INTERN DOCUMENTS
 ========================= */
 
+// Custom middleware to handle multer errors
+const handleUploadError = (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer error:', err.message);
+      return res.status(400).json({
+        message: 'File upload failed: ' + (err.message || 'Unknown error'),
+      });
+    }
+    next();
+  });
+};
+
 // INTERN – upload / update document
 router.post(
   '/intern-docs/upload',
   authMiddleware(['intern']),
-  upload.single('file'),
+  (req, res, next) => {
+    // Validate authentication before multer
+    console.log('[ROUTE] /intern-docs/upload - user:', req.user?.id);
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: 'You must be logged in as an intern to upload documents' });
+    }
+    next();
+  },
+  handleUploadError,
   internDocsController.uploadInternDoc,
 );
 
@@ -99,11 +123,25 @@ router.delete('/intern-docs/:column', authMiddleware(['intern']), internDocsCont
 /* =========================
    COMPANY / HTE
 ========================= */
-router.post('/addCompany', authMiddleware(['coordinator']), upload.single('moaFile'), authController.addCompany);
 
-router.get('/HTE', authController.getHTE);
+// Custom middleware for MOA file uploads
+const handleMOAUploadError = (req, res, next) => {
+  upload.single('moaFile')(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer MOA error:', err.message);
+      return res.status(400).json({
+        message: 'File upload failed: ' + (err.message || 'Unknown error'),
+      });
+    }
+    next();
+  });
+};
 
-router.put('/HTE/:id', authMiddleware(['coordinator']), upload.single('moaFile'), authController.updateCompany);
+router.post('/addCompany', authMiddleware(['coordinator']), handleMOAUploadError, authController.addCompany);
+
+router.get('/HTE', authMiddleware(['coordinator', 'adviser']), authController.getHTE);
+
+router.put('/HTE/:id', authMiddleware(['coordinator']), handleMOAUploadError, authController.updateCompany);
 
 router.delete('/HTE/:id', authMiddleware(['coordinator']), authController.deleteHTE);
 
@@ -121,7 +159,7 @@ router.put('/company/profile', authMiddleware(['company']), companyDashboardCont
 router.get('/company/interns', authMiddleware(['company']), companyDashboardController.getCompanyInterns);
 
 // Upload / update MOA
-router.put('/company/moa', authMiddleware(['company']), upload.single('moaFile'), companyDashboardController.uploadMoa);
+router.put('/company/moa', authMiddleware(['company']), handleMOAUploadError, companyDashboardController.uploadMoa);
 
 // View / download MOA (Intern or Company)
 router.get('/company/moa', authMiddleware(['intern', 'company']), companyDashboardController.getMoa);

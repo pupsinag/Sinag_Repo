@@ -101,22 +101,22 @@ CREATE TABLE IF NOT EXISTS hte_evaluations (
 
 -- Intern Evaluations table
 CREATE TABLE IF NOT EXISTS intern_evaluations (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  intern_id INTEGER NOT NULL,
-  internName TEXT NOT NULL,
-  section TEXT,
-  hteName TEXT,
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  intern_id INT UNSIGNED NOT NULL,
+  internName VARCHAR(255) NOT NULL,
+  section VARCHAR(255),
+  hteName VARCHAR(255),
   jobDescription TEXT,
-  totalScore REAL NOT NULL,
+  totalScore FLOAT NOT NULL,
   technicalDetails TEXT,
   recommendations TEXT,
   remarks TEXT,
-  evaluator TEXT NOT NULL,
-  designation TEXT NOT NULL,
-  date TEXT NOT NULL,
-  conforme TEXT,
-  createdAt TEXT NOT NULL,
-  updatedAt TEXT NOT NULL,
+  evaluator VARCHAR(255) NOT NULL,
+  designation VARCHAR(255) NOT NULL,
+  date DATE NOT NULL,
+  conforme VARCHAR(255),
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (intern_id) REFERENCES interns(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -165,17 +165,17 @@ CREATE TABLE IF NOT EXISTS intern_daily_logs (
 
 -- Intern Documents table
 CREATE TABLE IF NOT EXISTS intern_documents (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  intern_id INTEGER NOT NULL,
-  consent_form TEXT,
-  notarized_agreement TEXT,
-  resume TEXT,
-  cor TEXT,
-  insurance TEXT,
-  medical_cert TEXT,
-  uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (intern_id) REFERENCES interns(id) ON DELETE CASCADE ON UPDATE CASCADE,
-  UNIQUE (intern_id)
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  intern_id INT UNSIGNED NOT NULL,
+  document_type VARCHAR(255),
+  file_name VARCHAR(255),
+  file_path VARCHAR(255),
+  uploaded_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+  status VARCHAR(255),
+  remarks TEXT,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (intern_id) REFERENCES interns(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- Intern Evaluation Items table
@@ -187,8 +187,8 @@ CREATE TABLE IF NOT EXISTS intern_evaluation_items (
   maxScore INTEGER NOT NULL,
   score REAL NOT NULL,
   remarks TEXT,
-  createdAt TEXT NOT NULL,
-  updatedAt TEXT NOT NULL,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (evaluationId) REFERENCES intern_evaluations(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 

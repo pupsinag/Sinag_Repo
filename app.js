@@ -137,7 +137,7 @@ if (internEvalReportRoute) app.use('/api/reports', internEvalReportRoute);
 const forgotPasswordRoute = loadRoute('./routes/forgotPasswordRoutes', 'forgotPasswordRoutes');
 if (forgotPasswordRoute) app.use('/api/forgot-password', forgotPasswordRoute);
 
-const hteEvaluationsRoute = loadRoute('./routes/HTEEvaluations', 'HTEEvaluations');
+const hteEvaluationsRoute = loadRoute('./routes/hteEvaluations', 'hteEvaluations');
 if (hteEvaluationsRoute) app.use('/api/hte-evaluations', hteEvaluationsRoute);
 
 const supervisorEvaluationsRouter = require('./routes/SupervisorEvaluations');
@@ -164,7 +164,12 @@ const internDailyLogRoutes = loadRoute(
   path.join(__dirname, 'routes', 'internDailyLogRoutes.js'),
   'internDailyLogRoutes',
 );
-if (internDailyLogRoutes) app.use('/api', internDailyLogRoutes);
+if (internDailyLogRoutes) {
+  app.use('/api', internDailyLogRoutes);
+  console.log('[ROUTE] /api - internDailyLogRoutes loaded and registered');
+} else {
+  console.warn('[ROUTE] /api - internDailyLogRoutes NOT loaded');
+}
 
 // =========================
 // SERVE FRONTEND (PRODUCTION)
@@ -209,6 +214,30 @@ const db = require('./models');
 const { sequelize } = db;
 
 // =========================
+// CONNECTION POOL MANAGEMENT
+// =========================
+// Ensure connections are validated before use
+app.use(async (req, res, next) => {
+  try {
+    // Test and restore connection if needed
+    if (!sequelize.authenticate) {
+      await sequelize.authenticate();
+    }
+    next();
+  } catch (error) {
+    console.warn('⚠️ Database connection lost, attempting to reconnect...');
+    try {
+      await sequelize.authenticate();
+      console.log('✅ Database reconnected successfully');
+      next();
+    } catch (reconnectError) {
+      console.error('❌ Failed to reconnect to database:', reconnectError);
+      res.status(503).json({ message: 'Database connection unavailable' });
+    }
+  }
+});
+
+// =========================
 // START SERVER
 // =========================
 console.log('🚀 Starting backend...');
@@ -237,6 +266,24 @@ sequelize
   })
   .then(() => {
     console.log('✅ Database schema updated');
+    
+    // Setup connection pool health check every 5 minutes
+    setInterval(async () => {
+      try {
+        await sequelize.authenticate();
+        console.log('✅ Connection pool health check passed');
+      } catch (error) {
+        console.warn('⚠️ Connection pool health check failed:', error.message);
+        // Attempt to recreate connection
+        try {
+          await sequelize.close();
+          await sequelize.authenticate();
+          console.log('✅ Connection pool recovered');
+        } catch (recoveryError) {
+          console.error('❌ Failed to recover connection pool:', recoveryError);
+        }
+      }
+    }, 5 * 60 * 1000); // Every 5 minutes
   })
   .catch((err) => {
     console.error('❌ Database connection failed:', err);

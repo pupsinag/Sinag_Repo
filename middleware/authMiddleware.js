@@ -21,18 +21,53 @@ function authMiddleware(allowedRoles = []) {
     console.log('--- [authMiddleware] Incoming request:', req.method, req.originalUrl);
     console.log('Headers:', req.headers);
     const authHeader = req.headers.authorization;
+    const headerToken = req.headers['x-auth-token'];
+    const cookieHeader = req.headers.cookie || '';
+    const cookieToken = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .map((part) => part.split('='))
+      .find(([key]) => key === 'token')?.[1];
+    const queryToken = req.query?.token;
 
     /* =========================
        1. CHECK AUTH HEADER
     ========================= */
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    let token = null;
+    
+    // Priority 1: Cookie (most reliable for browser-based apps)
+    if (cookieToken && decodeURIComponent(cookieToken).trim()) {
+      token = decodeURIComponent(cookieToken).trim();
+      console.log('✅ Token from cookie');
+    }
+    
+    // Priority 2: Bearer Authorization header (if valid)
+    if (!token && authHeader && authHeader.startsWith('Bearer ')) {
+      const extractedToken = authHeader.split(' ')[1];
+      if (extractedToken && extractedToken.trim() && extractedToken !== 'null') {
+        token = extractedToken.trim();
+        console.log('✅ Token from Bearer header');
+      }
+    }
+    
+    // Priority 3: x-auth-token header
+    if (!token && headerToken && String(headerToken).trim() && String(headerToken) !== 'null') {
+      token = String(headerToken).trim();
+      console.log('✅ Token from x-auth-token header');
+    }
+    
+    // Priority 4: Query parameter
+    if (!token && queryToken && String(queryToken).trim()) {
+      token = String(queryToken).trim();
+      console.log('✅ Token from query');
+    }
+
+    if (!token) {
       console.error('❌ [authMiddleware] Missing or invalid authorization header');
       return res.status(401).json({
         message: 'Missing or invalid authorization header',
       });
     }
-
-    const token = authHeader.split(' ')[1];
 
     try {
       /* =========================

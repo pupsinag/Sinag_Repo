@@ -9,6 +9,6 @@ const { generateInternSubmittedDocuments } = require('../controllers/internSubmi
    PDF REPORT
 ============================== */
 
-router.post('/intern-documents', authMiddleware(), generateInternSubmittedDocuments);
+router.post('/intern-documents', authMiddleware(['adviser', 'coordinator']), generateInternSubmittedDocuments);
 
 module.exports = router;
