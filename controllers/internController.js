@@ -109,6 +109,51 @@ exports.getInternsForAdviser = async (req, res) => {
 
     console.log('[getInternsForAdviser] Intern IDs:', interns.map((i) => i.id).join(', '));
 
+    // Step 1.5: Auto-assign advisers if not already assigned
+    console.log('[getInternsForAdviser] Step 1.5: Auto-assigning advisers to interns without advisers...');
+    const internsWithoutAdvisers = interns.filter((i) => !i.adviser_id);
+    
+    if (internsWithoutAdvisers.length > 0) {
+      console.log(`[getInternsForAdviser] Found ${internsWithoutAdvisers.length} interns without advisers`);
+      
+      // Fetch user data for these interns to get their program and yearSection
+      const userIds = internsWithoutAdvisers.map((i) => i.user_id);
+      const internUsers = await User.findAll({
+        where: { id: userIds },
+        attributes: ['id', 'program', 'yearSection'],
+        raw: true,
+      });
+      
+      // For each intern without adviser, find matching adviser by program + yearSection
+      for (const intern of internsWithoutAdvisers) {
+        const internUser = internUsers.find((u) => u.id === intern.user_id);
+        
+        if (internUser && internUser.program) {
+          // Find adviser with matching program and yearSection
+          const matchingAdviser = await User.findOne({
+            where: {
+              role: 'Adviser',
+              program: internUser.program,
+            },
+            attributes: ['id', 'program', 'yearSection'],
+            raw: true,
+          });
+          
+          if (matchingAdviser) {
+            // Update intern with adviser_id
+            await Intern.update(
+              { adviser_id: matchingAdviser.id },
+              { where: { id: intern.id } }
+            );
+            console.log(`[getInternsForAdviser] Assigned adviser ${matchingAdviser.id} to intern ${intern.id}`);
+            intern.adviser_id = matchingAdviser.id; // Update in-memory copy
+          }
+        }
+      }
+    } else {
+      console.log('[getInternsForAdviser] All interns already have advisers assigned');
+    }
+
     // Step 2: Get User data for each intern
     console.log('[getInternsForAdviser] Step 2: Fetching user data...');
     const internIds = interns.map((i) => i.user_id).filter(Boolean);
