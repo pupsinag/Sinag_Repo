@@ -9,34 +9,23 @@ exports.getYearSectionsForProgram = async (req, res, next) => {
     // Normalize program for matching
     const normalizedProgram = normalizeProgramFull(program);
 
-    console.log('🔍 Fetching year sections for program:', program);
-    console.log('📝 Normalized program:', normalizedProgram);
-
     // Find all unique year_section for the given program
-    // Use sequelize.query for more reliable DISTINCT handling
-    const yearSectionsRaw = await sequelize.query(
-      `SELECT DISTINCT year_section FROM interns 
-       WHERE year_section IS NOT NULL 
-       AND REPLACE(REPLACE(UPPER(program), ' ', ''), '-', '') = :normalizedProgram
-       ORDER BY year_section ASC`,
-      {
-        replacements: { normalizedProgram },
-        type: QueryTypes.SELECT,
-      }
-    );
-
-    const yearSections = yearSectionsRaw.map((row) => row.year_section);
-    
-    console.log('✅ Found year sections:', yearSections);
-    res.json(yearSections);
+    const yearSections = await Intern.findAll({
+      attributes: [[fn('DISTINCT', col('year_section')), 'year_section']],
+      where: {
+        [Op.and]: [literal(`REPLACE(REPLACE(UPPER(program), ' ', ''), '-', '') = '${normalizedProgram}'`)],
+      },
+      raw: true,
+    });
+    // Return all non-null, unique year_section values
+    res.json(yearSections.map((ys) => ys.year_section).filter(Boolean));
   } catch (err) {
     console.error('❌ getYearSectionsForProgram:', err);
     next(err);
   }
 };
 /* eslint-env node */
-const { fn, col, literal, Op, QueryTypes } = require('sequelize');
-const sequelize = require('../config/database');
+const { fn, col, literal, Op } = require('sequelize');
 const { Intern, Company, User } = require('../models');
 
 // Add this mapping at the top (customize as needed)

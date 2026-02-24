@@ -1,7 +1,6 @@
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
-const { Op } = require('sequelize');
 
 const { Intern, User, Company, InternDocuments } = require('../models');
 
@@ -24,39 +23,14 @@ exports.generateInternList = async (req, res) => {
     ============================== */
     const interns = await Intern.findAll({
       where: whereClause,
-      include: [
-        { model: User, as: 'User', required: false },
-        { model: User, as: 'Adviser', required: false }, // ✅ Include adviser's info
-      ],
+      include: [{ model: User, as: 'User', required: false }],
       order: [[{ model: User, as: 'User' }, 'lastName', 'ASC']],
     });
 
-    // ✅ Get the program's adviser for the header (if no individual adviser assigned)
-    // ✅ IMPORTANT: Also filter by year_section if provided
-    let adviserWhere = { role: 'adviser', program };
-    if (year_section) {
-      // Try to match adviser with the year_section
-      // Use proper AND/OR combination for Sequelize
-      adviserWhere = {
-        [Op.and]: [
-          { role: 'adviser' },
-          { program },
-          {
-            [Op.or]: [
-              { yearSection: year_section },
-              { year_section: year_section },
-            ],
-          },
-        ],
-      };
-    }
-    
-    const programAdviser = await User.findOne({
-      where: adviserWhere,
+    const adviser = await User.findOne({
+      where: { role: 'adviser', program },
     });
-    const programAdviserName = programAdviser 
-      ? `${programAdviser.firstName || ''} ${programAdviser.lastName || ''}`.trim().toUpperCase() 
-      : 'N/A';
+    const adviserName = adviser ? `${adviser.firstName || ''} ${adviser.lastName || ''}`.trim().toUpperCase() : 'N/A';
 
     /* =============================
        PDF HEADERS
@@ -125,18 +99,9 @@ exports.generateInternList = async (req, res) => {
       align: 'center',
     });
 
-    doc.moveDown(0.1);
+    doc.moveDown(0.2);
 
-    // ✅ Add Year and Section if provided
-    if (year_section) {
-      doc.fontSize(9).font('Helvetica').text(`YEAR & SECTION: ${year_section.toUpperCase()}`, {
-        width: pageWidth,
-        align: 'center',
-      });
-      doc.moveDown(0.1);
-    }
-
-    doc.fontSize(9).font('Helvetica').text(`ADVISER: ${programAdviserName}`, {
+    doc.fontSize(9).font('Helvetica').text(`ADVISER: ${adviserName}`, {
       width: pageWidth,
       align: 'center',
     });
@@ -170,7 +135,7 @@ exports.generateInternList = async (req, res) => {
     doc.text('STUDENT ID', startX + 45, tableTop + 6);
     doc.text('NAME', startX + 145, tableTop + 6);
     doc.text('EMAIL', startX + 295, tableTop + 6);
-    doc.text('ADVISER', startX + 425, tableTop + 6);
+    doc.text('GUARDIAN', startX + 425, tableTop + 6);
 
     /* =============================
        TABLE ROWS
@@ -180,17 +145,6 @@ exports.generateInternList = async (req, res) => {
 
     interns.forEach((intern, index) => {
       const u = intern.User || {};
-      const adviserUser = intern.Adviser || null; // ✅ Get adviser for this intern
-      
-      // ✅ If intern has an adviser assigned, use that; otherwise use programme adviser
-      let adviserName = 'N/A';
-      if (adviserUser && adviserUser.lastName) {
-        adviserName = `${adviserUser.lastName}, ${adviserUser.firstName || ''}`.toUpperCase();
-      } else if (programAdviser) {
-        // Fallback to programme adviser if intern doesn't have one assigned
-        adviserName = `${programAdviser.lastName || ''}, ${programAdviser.firstName || ''}`.trim().toUpperCase();
-      }
-      
       const fullName = `${u.lastName || ''}, ${u.firstName || ''} ${u.mi || ''}`.trim().toUpperCase();
       doc.rect(startX, currentY, 515, 18).stroke('#CCCCCC');
       doc.fontSize(7);
@@ -198,7 +152,7 @@ exports.generateInternList = async (req, res) => {
       doc.text(u.studentId || 'N/A', startX + 45, currentY + 5);
       doc.text(fullName !== ',' ? fullName : 'N/A', startX + 145, currentY + 5);
       doc.text(u.email || 'N/A', startX + 295, currentY + 5);
-      doc.text(adviserName, startX + 425, currentY + 5); // ✅ Show individual adviser with fallback
+      doc.text(u.guardian || 'N/A', startX + 425, currentY + 5);
       currentY += 18;
       if (currentY > 720) {
         doc.addPage();
