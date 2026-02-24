@@ -272,13 +272,14 @@ async function deleteInternDoc(req, res) {
 /* =========================
    GET INTERN DOCUMENT (For Adviser/Admin viewing)
 ========================= */
-// GET /api/auth/intern-docs/download/:internId/:documentType
+// GET /api/documents/intern-docs/download/:internId/:documentType
 async function downloadInternDoc(req, res) {
   try {
     const { internId, documentType } = req.params;
     const user = req.user;
 
-    console.log('[downloadInternDoc] User:', { id: user.id, role: user.role });
+    console.log('\n\n🔍 [downloadInternDoc] ========== DOWNLOAD REQUEST ==========');
+    console.log('[downloadInternDoc] User:', { id: user.id, role: user.role, program: user.program, yearSection: user.yearSection });
     console.log('[downloadInternDoc] Requested:', { internId, documentType });
 
     // Verify user is adviser, coordinator, or superadmin
