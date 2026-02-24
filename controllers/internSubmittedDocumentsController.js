@@ -25,9 +25,13 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       return res.status(400).json({ message: 'Program is required' });
     }
 
-    // Fetch adviser name for the program
+    // Fetch adviser name for the program and year_section
+    let adviserWhere = { role: 'adviser', program };
+    if (year_section) {
+      adviserWhere.yearSection = year_section;
+    }
     const adviser = await User.findOne({
-      where: { role: 'adviser', program },
+      where: adviserWhere,
     });
     const adviserName = adviser ? `${adviser.firstName || ''} ${adviser.lastName || ''}`.trim().toUpperCase() : 'N/A';
     console.log('[generateInternSubmittedDocuments] Adviser name:', adviserName);
