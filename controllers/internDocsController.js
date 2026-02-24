@@ -303,14 +303,37 @@ async function downloadInternDoc(req, res) {
       }
     }
 
-    // Get the document
+    // Get the document (case-insensitive search)
     const doc = await InternDocuments.findOne({
-      where: { intern_id: internId, document_type: documentType },
+      where: {
+        intern_id: internId,
+        [require('sequelize').Op.and]: [
+          require('sequelize').where(
+            require('sequelize').fn('LOWER', require('sequelize').col('document_type')),
+            'LIKE',
+            documentType.toLowerCase()
+          ),
+        ],
+      },
+      subQuery: false,
+      attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path'],
     });
 
     if (!doc || !doc.file_path) {
       console.error('[downloadInternDoc] Document not found:', { internId, documentType });
-      return res.status(404).json({ message: 'Document not found' });
+      
+      // Try to find any document for this intern to suggest
+      const allDocs = await InternDocuments.findAll({
+        where: { intern_id: internId },
+        attributes: ['document_type'],
+      });
+      const availableTypes = allDocs.map(d => d.document_type);
+      
+      return res.status(404).json({ 
+        message: 'Document type not found',
+        requested: documentType,
+        availableTypes,
+      });
     }
 
     // Build file path - handle both absolute and relative paths
@@ -386,9 +409,19 @@ async function validateInternDoc(req, res) {
 
     console.log('[validateInternDoc] Checking:', { internId, documentType });
 
-    // Get the document
+    // Get the document (case-insensitive search)
     const doc = await InternDocuments.findOne({
-      where: { intern_id: internId, document_type: documentType },
+      where: {
+        intern_id: internId,
+        [require('sequelize').Op.and]: [
+          require('sequelize').where(
+            require('sequelize').fn('LOWER', require('sequelize').col('document_type')),
+            'LIKE',
+            documentType.toLowerCase()
+          ),
+        ],
+      },
+      subQuery: false,
     });
 
     if (!doc) {
