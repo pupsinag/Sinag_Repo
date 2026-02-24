@@ -69,39 +69,47 @@ app.get('/uploads/:filename', async (req, res) => {
     // File recovery: search for matching files
     const files = await fs.readdir(uploadsDir);
     let recoveredFile = null;
-    let matchedFile = null;
 
     // Pattern 1: Look for exact filename match (case-insensitive)
     const requestedLower = requestedFile.toLowerCase();
-    matchedFile = files.find(f => f.toLowerCase() === requestedLower);
+    let matchedFile = files.find(f => f.toLowerCase() === requestedLower);
     if (matchedFile) {
       recoveredFile = matchedFile;
       console.log('[UPLOADS] Recovered file by case-match:', recoveredFile);
     }
 
-    // Pattern 2: Partial match based on filename without extension
+    // Pattern 2: Look for files with matching document type in name
     if (!recoveredFile) {
-      const fileNameWithoutExt = path.parse(requestedFile).name.toUpperCase();
-      matchedFile = files.find(f => f.toUpperCase().includes(fileNameWithoutExt));
+      const docType = path.parse(requestedFile).name.toUpperCase();
+      // Match by document type substring (e.g., "RESUME", "COR", "MEDICAL")
+      matchedFile = files.find(f => {
+        const fUpper = f.toUpperCase();
+        // Check if document type keyword exists in filename
+        return docType.split('_').some(part => 
+          part.length > 3 && fUpper.includes(part)
+        );
+      });
       if (matchedFile) {
         recoveredFile = matchedFile;
-        console.log('[UPLOADS] Recovered file by name pattern:', recoveredFile);
+        console.log('[UPLOADS] Recovered file by document type pattern:', recoveredFile);
       }
     }
 
-    if (recoveredFile) {
-      const recoveredPath = path.join(uploadsDir, recoveredFile);
-      console.log('[UPLOADS] Serving recovered file:', recoveredFile);
-      return res.sendFile(recoveredPath);
+    // Pattern 3: As last resort, return list of available files for admin to investigate
+    if (!recoveredFile) {
+      const sampleFiles = files.slice(0, 5);
+      console.log('[UPLOADS] File recovery failed. Sample files in uploads:', sampleFiles);
+      return res.status(404).json({
+        message: 'File not found and could not be recovered',
+        requested: requestedFile,
+        available_samples: sampleFiles,
+        note: 'Database contains old filenames that no longer exist on disk. Files may need to be re-uploaded.'
+      });
     }
 
-    // No recovery possible
-    console.log('[UPLOADS] File recovery failed for:', requestedFile);
-    return res.status(404).json({
-      message: 'File not found and could not be recovered',
-      requested: requestedFile,
-      suggestion: 'Contact administrator if file should exist'
-    });
+    const recoveredPath = path.join(uploadsDir, recoveredFile);
+    console.log('[UPLOADS] Serving recovered file:', recoveredFile);
+    return res.sendFile(recoveredPath);
 
   } catch (err) {
     console.error('[UPLOADS] Error serving file:', err.message);
