@@ -300,7 +300,16 @@ async function downloadInternDoc(req, res) {
       // Check if directly assigned via adviser_id OR matching program + yearSection
       const isDirectlyAssigned = intern.adviser_id === user.id;
       const isProgramMatch = user.program && intern.program && user.program === intern.program;
-      const isYearSectionMatch = user.yearSection && intern.year_section && user.yearSection === intern.year_section;
+      
+      // ✅ FIXED: Normalize yearSection comparison (remove spaces, convert to lowercase)
+      // This matches the logic in adviserController.getMatchingInterns()
+      let isYearSectionMatch = false;
+      if (user.yearSection && intern.year_section) {
+        const normalizedAdviserYearSection = (user.yearSection || '').replace(/\s/g, '').toLowerCase();
+        const normalizedInternYearSection = (intern.year_section || '').replace(/\s/g, '').toLowerCase();
+        isYearSectionMatch = normalizedAdviserYearSection === normalizedInternYearSection;
+      }
+      
       const isProgramAndYearMatch = isProgramMatch && isYearSectionMatch;
       
       if (!isDirectlyAssigned && !isProgramAndYearMatch) {
@@ -310,7 +319,9 @@ async function downloadInternDoc(req, res) {
           adviserProgram: user.program,
           internProgram: intern.program,
           adviserYearSection: user.yearSection,
-          internYearSection: intern.year_section
+          normalizedAdviserYearSection: (user.yearSection || '').replace(/\s/g, '').toLowerCase(),
+          internYearSection: intern.year_section,
+          normalizedInternYearSection: (intern.year_section || '').replace(/\s/g, '').toLowerCase(),
         });
         return res.status(403).json({ message: 'You are not authorized to access this intern\'s documents' });
       }
