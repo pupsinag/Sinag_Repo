@@ -160,10 +160,17 @@ exports.generateInternList = async (req, res) => {
 
     interns.forEach((intern, index) => {
       const u = intern.User || {};
-      const adviserUser = intern.Adviser || {}; // ✅ Get adviser for this intern
-      const adviserName = adviserUser.lastName 
-        ? `${adviserUser.lastName}, ${adviserUser.firstName || ''}`.toUpperCase()
-        : 'N/A';
+      const adviserUser = intern.Adviser || null; // ✅ Get adviser for this intern
+      
+      // ✅ If intern has an adviser assigned, use that; otherwise use programme adviser
+      let adviserName = 'N/A';
+      if (adviserUser && adviserUser.lastName) {
+        adviserName = `${adviserUser.lastName}, ${adviserUser.firstName || ''}`.toUpperCase();
+      } else if (programAdviser) {
+        // Fallback to programme adviser if intern doesn't have one assigned
+        adviserName = `${programAdviser.lastName || ''}, ${programAdviser.firstName || ''}`.trim().toUpperCase();
+      }
+      
       const fullName = `${u.lastName || ''}, ${u.firstName || ''} ${u.mi || ''}`.trim().toUpperCase();
       doc.rect(startX, currentY, 515, 18).stroke('#CCCCCC');
       doc.fontSize(7);
@@ -171,7 +178,7 @@ exports.generateInternList = async (req, res) => {
       doc.text(u.studentId || 'N/A', startX + 45, currentY + 5);
       doc.text(fullName !== ',' ? fullName : 'N/A', startX + 145, currentY + 5);
       doc.text(u.email || 'N/A', startX + 295, currentY + 5);
-      doc.text(adviserName, startX + 425, currentY + 5); // ✅ Show individual adviser
+      doc.text(adviserName, startX + 425, currentY + 5); // ✅ Show individual adviser with fallback
       currentY += 18;
       if (currentY > 720) {
         doc.addPage();
