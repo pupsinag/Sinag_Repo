@@ -128,8 +128,29 @@ exports.getInternsForAdviser = async (req, res) => {
       });
     }
 
-    // Step 3: Get Company data for each intern
-    console.log('[getInternsForAdviser] Step 3: Fetching company data...');
+    // Step 3: Get Adviser data for each intern
+    console.log('[getInternsForAdviser] Step 3: Fetching adviser data...');
+    const adviserIds = interns.map((i) => i.adviser_id).filter(Boolean);
+    const advisers = {};
+    
+    if (adviserIds.length > 0) {
+      console.log('[getInternsForAdviser] Adviser IDs to fetch:', adviserIds.join(', '));
+      const adviserData = await User.findAll({
+        where: { id: adviserIds },
+        attributes: ['id', 'firstName', 'lastName', 'mi', 'email', 'program', 'yearSection'],
+        raw: true,
+      });
+      console.log(`[getInternsForAdviser] Step 3 COMPLETE: Found ${adviserData.length} advisers`);
+      
+      adviserData.forEach((a) => {
+        advisers[a.id] = a;
+      });
+    } else {
+      console.log('[getInternsForAdviser] No adviser IDs found');
+    }
+
+    // Step 4: Get Company data for each intern
+    console.log('[getInternsForAdviser] Step 4: Fetching company data...');
     const companyIds = interns.map((i) => i.company_id).filter(Boolean);
     const companies = {};
     
@@ -140,7 +161,7 @@ exports.getInternsForAdviser = async (req, res) => {
         attributes: ['id', 'name', 'email', 'address', 'supervisorName', 'natureOfBusiness'],
         raw: true,
       });
-      console.log(`[getInternsForAdviser] Step 3 COMPLETE: Found ${companyData.length} companies`);
+      console.log(`[getInternsForAdviser] Step 4 COMPLETE: Found ${companyData.length} companies`);
       
       companyData.forEach((c) => {
         companies[c.id] = c;
@@ -149,8 +170,8 @@ exports.getInternsForAdviser = async (req, res) => {
       console.log('[getInternsForAdviser] No company IDs found');
     }
 
-    // Step 4: Get InternDocuments data for each intern
-    console.log('[getInternsForAdviser] Step 4: Fetching intern documents...');
+    // Step 5: Get InternDocuments data for each intern
+    console.log('[getInternsForAdviser] Step 5: Fetching intern documents...');
     const internIdsList = interns.map((i) => i.id).filter(Boolean);
     const docsMap = {};
     
@@ -160,7 +181,7 @@ exports.getInternsForAdviser = async (req, res) => {
         where: { intern_id: internIdsList },
         raw: true,
       });
-      console.log(`[getInternsForAdviser] Step 4 COMPLETE: Found ${allDocs.length} documents`);
+      console.log(`[getInternsForAdviser] Step 5 COMPLETE: Found ${allDocs.length} documents`);
       
       // Build map to accumulate ALL documents for each intern (not just the last one)
       allDocs.forEach((doc) => {
@@ -173,8 +194,8 @@ exports.getInternsForAdviser = async (req, res) => {
       console.log('[getInternsForAdviser] No intern IDs found for documents');
     }
 
-    // Step 5: Transform InternDocuments array into object structure for frontend
-    console.log('[getInternsForAdviser] Step 5: Transforming document data for frontend...');
+    // Step 6: Transform InternDocuments array into object structure for frontend
+    console.log('[getInternsForAdviser] Step 6: Transforming document data for frontend...');
     const docsByIntern = {};
     
     Object.entries(docsMap).forEach(([internId, docs]) => {
@@ -192,13 +213,14 @@ exports.getInternsForAdviser = async (req, res) => {
         console.log('[getInternsForAdviser] Sample InternDocuments object:', JSON.stringify(docObj, null, 2));
       }
     });
-    console.log('[getInternsForAdviser] Step 5 COMPLETE: Documents transformed');
+    console.log('[getInternsForAdviser] Step 6 COMPLETE: Documents transformed');
 
-    // Step 6: Enrich interns with User, Company, and InternDocuments data
-    console.log('[getInternsForAdviser] Step 6: Enriching intern data...');
+    // Step 7: Enrich interns with User, Adviser, Company, and InternDocuments data
+    console.log('[getInternsForAdviser] Step 7: Enriching intern data...');
     const enrichedInterns = interns.map((intern) => ({
       ...intern,
       User: users[intern.user_id] || null,
+      Adviser: intern.adviser_id ? advisers[intern.adviser_id] || null : null,
       company: intern.company_id ? companies[intern.company_id] || null : null,
       InternDocuments: docsByIntern[intern.id] || {}, // Keep as nested object, not spread
     }));
