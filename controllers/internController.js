@@ -186,6 +186,11 @@ exports.getInternsForAdviser = async (req, res) => {
         docObj[docType.toLowerCase()] = doc.file_path;
       });
       docsByIntern[internId] = docObj;
+      
+      // Debug: Log what we're sending for first intern
+      if (Object.keys(docsByIntern).length === 1) {
+        console.log('[getInternsForAdviser] Sample InternDocuments object:', JSON.stringify(docObj, null, 2));
+      }
     });
     console.log('[getInternsForAdviser] Step 5 COMPLETE: Documents transformed');
 
