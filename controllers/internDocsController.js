@@ -297,10 +297,10 @@ async function downloadInternDoc(req, res) {
 
     // If user is adviser, verify they're assigned to this intern
     if (user.role === 'adviser') {
-      // Check if directly assigned via adviser_id OR matching program + year_section
+      // Check if directly assigned via adviser_id OR matching program + yearSection
       const isDirectlyAssigned = intern.adviser_id === user.id;
       const isProgramMatch = user.program && intern.program && user.program === intern.program;
-      const isYearSectionMatch = user.year_section && intern.year_section && user.year_section === intern.year_section;
+      const isYearSectionMatch = user.yearSection && intern.year_section && user.yearSection === intern.year_section;
       const isProgramAndYearMatch = isProgramMatch && isYearSectionMatch;
       
       if (!isDirectlyAssigned && !isProgramAndYearMatch) {
@@ -309,7 +309,7 @@ async function downloadInternDoc(req, res) {
           internAdvertiserId: intern.adviser_id,
           adviserProgram: user.program,
           internProgram: intern.program,
-          adviserYearSection: user.year_section,
+          adviserYearSection: user.yearSection,
           internYearSection: intern.year_section
         });
         return res.status(403).json({ message: 'You are not authorized to access this intern\'s documents' });
