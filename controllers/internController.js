@@ -175,6 +175,8 @@ exports.getInternsForAdviser = async (req, res) => {
 
     // Step 5: Transform InternDocuments array into object structure for frontend
     console.log('[getInternsForAdviser] Step 5: Transforming document data for frontend...');
+    const fs = require('fs');
+    const path = require('path');
     const docsByIntern = {};
     
     Object.entries(docsMap).forEach(([internId, docs]) => {
@@ -182,8 +184,23 @@ exports.getInternsForAdviser = async (req, res) => {
       // Map document_type to frontend field names (snake_case as expected by frontend)
       docs.forEach((doc) => {
         const docType = doc.document_type || '';
-        // Send as snake_case since frontend expects Ze.InternDocuments.consent_form
-        docObj[docType.toLowerCase()] = doc.file_path;
+        
+        // Check if file actually exists before including it
+        if (doc.file_path) {
+          let filePath = doc.file_path;
+          if (!filePath.includes(path.sep) && !filePath.startsWith('/')) {
+            filePath = path.join(__dirname, '..', 'uploads', filePath);
+          } else if (!path.isAbsolute(filePath)) {
+            filePath = path.join(__dirname, '..', filePath);
+          }
+          
+          if (fs.existsSync(filePath)) {
+            docObj[docType.toLowerCase()] = doc.file_path;
+            console.log(`✅ Document exists: ${docType}`);
+          } else {
+            console.log(`⚠️ Document MISSING: ${docType} (${filePath}) - excluding from response`);
+          }
+        }
       });
       docsByIntern[internId] = docObj;
       
