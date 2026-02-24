@@ -34,7 +34,28 @@ exports.getMatchingInterns = async (req, res) => {
         { model: require('../models').Supervisor, as: 'Supervisor' },
       ],
     });
-    interns.forEach((intern) => {
+    
+    // Transform InternDocuments array into object structure for frontend
+    const transformedInterns = interns.map((intern) => {
+      const internData = intern.toJSON ? intern.toJSON() : intern;
+      
+      // Transform InternDocuments array into object
+      const docsObject = {};
+      if (Array.isArray(internData.InternDocuments)) {
+        internData.InternDocuments.forEach((doc) => {
+          const docType = doc.document_type || '';
+          // Use snake_case as key (consent_form, notarized_agreement, etc.)
+          docsObject[docType.toLowerCase()] = doc.file_path;
+        });
+      }
+      
+      return {
+        ...internData,
+        InternDocuments: docsObject, // Replace array with object
+      };
+    });
+    
+    transformedInterns.forEach((intern) => {
       console.log('--- [getMatchingInterns] Intern:', {
         id: intern.id,
         program: intern.program,
@@ -43,9 +64,10 @@ exports.getMatchingInterns = async (req, res) => {
         user_program: intern.User?.program,
         user_firstName: intern.User?.firstName,
         user_lastName: intern.User?.lastName,
+        internDocuments: intern.InternDocuments,
       });
     });
-    return res.json(interns);
+    return res.json(transformedInterns);
   } catch (err) {
     console.error('❌ Error fetching matching interns:', err);
     res.status(500).json({ message: 'Server error' });
