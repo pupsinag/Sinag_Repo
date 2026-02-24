@@ -86,6 +86,13 @@ async function uploadInternDoc(req, res) {
     /* =========================
        CREATE OR UPDATE DOC RECORD
     ========================= */
+    console.log('📝 [SAVE] Will save to DB:', {
+      intern_id: intern.id,
+      document_type: targetColumn,
+      file_name: file.originalname,
+      file_path: file.filename,
+    });
+
     const docData = {
       intern_id: intern.id,
       document_type: targetColumn,
