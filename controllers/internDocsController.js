@@ -295,45 +295,35 @@ async function downloadInternDoc(req, res) {
       return res.status(404).json({ message: 'Intern not found' });
     }
 
-    // If user is adviser, verify they're assigned to this intern's program
+    // If user is adviser, verify they're assigned to this intern
     if (user.role === 'adviser') {
-      if (user.program !== intern.program) {
-        console.error('[downloadInternDoc] Adviser not assigned to intern program');
-        return res.status(403).json({ message: 'You are not assigned to this intern\'s program' });
+      // Check if directly assigned via adviser_id OR matching program + year_section
+      const isDirectlyAssigned = intern.adviser_id === user.id;
+      const isProgramMatch = user.program && intern.program && user.program === intern.program;
+      const isYearSectionMatch = user.year_section && intern.year_section && user.year_section === intern.year_section;
+      const isProgramAndYearMatch = isProgramMatch && isYearSectionMatch;
+      
+      if (!isDirectlyAssigned && !isProgramAndYearMatch) {
+        console.error('[downloadInternDoc] Adviser not authorized for intern', {
+          adviserId: user.id,
+          internAdvertiserId: intern.adviser_id,
+          adviserProgram: user.program,
+          internProgram: intern.program,
+          adviserYearSection: user.year_section,
+          internYearSection: intern.year_section
+        });
+        return res.status(403).json({ message: 'You are not authorized to access this intern\'s documents' });
       }
     }
 
-    // Get the document (case-insensitive search)
+    // Get the document
     const doc = await InternDocuments.findOne({
-      where: {
-        intern_id: internId,
-        [require('sequelize').Op.and]: [
-          require('sequelize').where(
-            require('sequelize').fn('LOWER', require('sequelize').col('document_type')),
-            'LIKE',
-            documentType.toLowerCase()
-          ),
-        ],
-      },
-      subQuery: false,
-      attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path'],
+      where: { intern_id: internId, document_type: documentType },
     });
 
     if (!doc || !doc.file_path) {
       console.error('[downloadInternDoc] Document not found:', { internId, documentType });
-      
-      // Try to find any document for this intern to suggest
-      const allDocs = await InternDocuments.findAll({
-        where: { intern_id: internId },
-        attributes: ['document_type'],
-      });
-      const availableTypes = allDocs.map(d => d.document_type);
-      
-      return res.status(404).json({ 
-        message: 'Document type not found',
-        requested: documentType,
-        availableTypes,
-      });
+      return res.status(404).json({ message: 'Document not found' });
     }
 
     // Build file path - handle both absolute and relative paths
@@ -409,19 +399,9 @@ async function validateInternDoc(req, res) {
 
     console.log('[validateInternDoc] Checking:', { internId, documentType });
 
-    // Get the document (case-insensitive search)
+    // Get the document
     const doc = await InternDocuments.findOne({
-      where: {
-        intern_id: internId,
-        [require('sequelize').Op.and]: [
-          require('sequelize').where(
-            require('sequelize').fn('LOWER', require('sequelize').col('document_type')),
-            'LIKE',
-            documentType.toLowerCase()
-          ),
-        ],
-      },
-      subQuery: false,
+      where: { intern_id: internId, document_type: documentType },
     });
 
     if (!doc) {

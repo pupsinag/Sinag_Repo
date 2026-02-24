@@ -2,8 +2,6 @@
 exports.getMatchingInterns = async (req, res) => {
   try {
     const { program, yearSection } = req.user;
-    const fs = require('fs');
-    const path = require('path');
     console.log('--- [getMatchingInterns] Adviser program:', program);
     console.log('--- [getMatchingInterns] Adviser yearSection:', yearSection);
     if (!program) {
@@ -42,29 +40,11 @@ exports.getMatchingInterns = async (req, res) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
       
       // Aggregate all documents into a single object with document_type as key
-      // ONLY include documents that exist on disk
       const aggregatedDocs = {};
       if (Array.isArray(internData.InternDocuments)) {
         internData.InternDocuments.forEach((doc) => {
-          if (!doc.file_path) return; // Skip if no file_path
-          
-          // Build file path to check
-          let filePath = doc.file_path;
-          if (!filePath.includes(path.sep) && !filePath.startsWith('/')) {
-            filePath = path.join(__dirname, '..', 'uploads', filePath);
-          } else if (!path.isAbsolute(filePath)) {
-            filePath = path.join(__dirname, '..', filePath);
-          }
-          
-          // Only include if file actually exists on disk
-          if (fs.existsSync(filePath)) {
-            const docType = (doc.document_type || '').toLowerCase();
-            aggregatedDocs[docType] = doc.file_path || null;
-            console.log(`✅ Document exists: ${docType} (${filePath})`);
-          } else {
-            const docType = (doc.document_type || '').toLowerCase();
-            console.log(`⚠️ Document MISSING: ${docType} (${filePath}) - removing from response`);
-          }
+          const docType = (doc.document_type || '').toLowerCase();
+          aggregatedDocs[docType] = doc.file_path || null;
         });
       }
       
