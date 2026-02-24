@@ -39,99 +39,31 @@ app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));
 
 // =========================
-// STATIC FILES - UPLOADS (WITH FILE RECOVERY)
+// STATIC FILES - UPLOADS (BEFORE other routes)
 // =========================
-const fs = require('fs').promises;
-
-app.get('/uploads/:filename', async (req, res) => {
-  const requestedFile = req.params.filename;
-  const uploadsDir = path.join(__dirname, 'uploads');
-  const fullPath = path.join(uploadsDir, requestedFile);
-
-  // ✅ Set CORS headers for all uploads
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-
-  try {
-    // Check if file exists at requested path
-    try {
-      await fs.access(fullPath);
-      // File exists, serve it
-      console.log('[UPLOADS] File found at requested path:', requestedFile);
-      return res.sendFile(fullPath);
-    } catch (err) {
-      // File doesn't exist, try recovery
-      console.log('[UPLOADS] File not found at:', requestedFile, '- attempting recovery...');
-    }
-
-    // File recovery: search for matching files
-    const files = await fs.readdir(uploadsDir);
-    let recoveredFile = null;
-
-    // Pattern 1: Look for exact filename match (case-insensitive)
-    const requestedLower = requestedFile.toLowerCase();
-    let matchedFile = files.find(f => f.toLowerCase() === requestedLower);
-    if (matchedFile) {
-      recoveredFile = matchedFile;
-      console.log('[UPLOADS] Recovered file by case-match:', recoveredFile);
-    }
-
-    // Pattern 2: Look for files with matching document type in name
-    if (!recoveredFile) {
-      const docType = path.parse(requestedFile).name.toUpperCase();
-      // Match by document type substring (e.g., "RESUME", "COR", "MEDICAL")
-      matchedFile = files.find(f => {
-        const fUpper = f.toUpperCase();
-        // Check if document type keyword exists in filename
-        return docType.split('_').some(part => 
-          part.length > 3 && fUpper.includes(part)
-        );
-      });
-      if (matchedFile) {
-        recoveredFile = matchedFile;
-        console.log('[UPLOADS] Recovered file by document type pattern:', recoveredFile);
-      }
-    }
-
-    // Pattern 3: As last resort, return list of available files for admin to investigate
-    if (!recoveredFile) {
-      const sampleFiles = files.slice(0, 5);
-      console.log('[UPLOADS] File recovery failed. Sample files in uploads:', sampleFiles);
-      return res.status(404).json({
-        message: 'File not found and could not be recovered',
-        requested: requestedFile,
-        available_samples: sampleFiles,
-        note: 'Database contains old filenames that no longer exist on disk. Files may need to be re-uploaded.'
-      });
-    }
-
-    const recoveredPath = path.join(uploadsDir, recoveredFile);
-    console.log('[UPLOADS] Serving recovered file:', recoveredFile);
-    return res.sendFile(recoveredPath);
-
-  } catch (err) {
-    console.error('[UPLOADS] Error serving file:', err.message);
-    return res.status(500).json({ message: 'Error serving file', error: err.message });
-  }
-});
-
-// Fallback for other static files (images, etc)
 app.use(
   '/uploads',
   (req, res, next) => {
+    // ✅ Set CORS headers explicitly for images
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
+
     next();
   },
   express.static(path.join(__dirname, 'uploads'), {
     setHeaders: (res, filePath) => {
+      // Set proper cache and content headers
       res.setHeader('Cache-Control', 'public, max-age=3600');
+
       if (filePath.endsWith('.pdf')) {
         res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline');
       } else if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
         res.setHeader('Content-Type', 'image/jpeg');
       }
