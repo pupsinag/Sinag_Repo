@@ -288,10 +288,8 @@ async function downloadInternDoc(req, res) {
       return res.status(403).json({ message: 'You do not have permission to view this document' });
     }
 
-    // Get the intern with User details
-    const intern = await Intern.findByPk(internId, {
-      include: { model: User, as: 'User' }
-    });
+    // Get the intern
+    const intern = await Intern.findByPk(internId);
     if (!intern) {
       console.error('[downloadInternDoc] Intern not found:', internId);
       return res.status(404).json({ message: 'Intern not found' });
@@ -349,48 +347,53 @@ async function downloadInternDoc(req, res) {
 
     // Check if file exists
     if (!fs.existsSync(normalizedPath)) {
-      console.error('[downloadInternDoc] File does not exist at stored path:', normalizedPath);
+      console.error('[downloadInternDoc] File does not exist:', normalizedPath);
       console.log('[downloadInternDoc] Stored path in DB:', doc.file_path);
       
-      // Try to find matching file in uploads directory
+      // Try to find actual file in uploads directory
       const uploadsPath = path.join(__dirname, '..', 'uploads');
-      let matchedFile = null;
+      let recoveredFile = null;
       
       try {
         const files = fs.readdirSync(uploadsPath);
         
-        // Pattern 1: Try to find by intern name + document type (e.g., SAMPLES_COR.pdf)
-        const internLastName = intern.User?.lastName?.toUpperCase() || '';
+        // Pattern 1: Look for files matching intern lastname + document type
+        const internUser = await Intern.findByPk(internId, { include: [{ model: User, as: 'User' }] });
+        const internLastName = internUser?.User?.lastName?.toUpperCase() || '';
         const docTypeUpper = documentType.toUpperCase();
         
         if (internLastName && docTypeUpper) {
-          matchedFile = files.find(f => 
+          recoveredFile = files.find(f => 
             f.toUpperCase().includes(internLastName) && 
             f.toUpperCase().includes(docTypeUpper)
           );
-          if (matchedFile) {
-            console.log('[downloadInternDoc] Found matching file by name pattern:', matchedFile);
+          if (recoveredFile) {
+            console.log('[downloadInternDoc] Found matching file by name pattern:', recoveredFile);
+            normalizedPath = path.join(uploadsPath, recoveredFile);
+            // Update database with correct path for next time
+            doc.file_path = recoveredFile;
+            await doc.save().catch(e => console.warn('Could not update DB with recovered path:', e.message));
           }
         }
         
-        // Pattern 2: If no match, try to find any file with the document type in name (last resort)
-        if (!matchedFile && docTypeUpper) {
-          matchedFile = files.find(f => f.toUpperCase().includes(docTypeUpper));
-          if (matchedFile) {
-            console.log('[downloadInternDoc] Found file by document type pattern:', matchedFile);
+        // Pattern 2: If no match, try document type only (last resort)
+        if (!recoveredFile && docTypeUpper) {
+          recoveredFile = files.find(f => f.toUpperCase().includes(docTypeUpper));
+          if (recoveredFile) {
+            console.log('[downloadInternDoc] Found file by document type pattern:', recoveredFile);
+            normalizedPath = path.join(uploadsPath, recoveredFile);
+            doc.file_path = recoveredFile;
+            await doc.save().catch(e => console.warn('Could not update DB with recovered path:', e.message));
           }
         }
         
-        if (matchedFile) {
-          normalizedPath = path.join(uploadsPath, matchedFile);
-          console.log('[downloadInternDoc] Using recovered file path:', normalizedPath);
-        } else {
+        if (!recoveredFile) {
           const possibleMatches = files.filter(f => 
             f.toLowerCase().includes(documentType.toLowerCase()) ||
-            f.toLowerCase().includes((intern.User?.lastName || '').toLowerCase())
+            (internUser?.User?.lastName && f.toLowerCase().includes(internUser.User.lastName.toLowerCase()))
           );
           
-          console.log('[downloadInternDoc] Possible matching files:', possibleMatches);
+          console.log('[downloadInternDoc] No matching file found. Possible matches:', possibleMatches.slice(0, 10));
           
           return res.status(404).json({ 
             message: 'Document file not found on server',
@@ -402,6 +405,14 @@ async function downloadInternDoc(req, res) {
         console.error('[downloadInternDoc] Error searching for file:', readErr.message);
         return res.status(404).json({ 
           message: 'Document file not found and recovery failed'
+        });
+      }
+      
+      // Verify recovered file exists before continuing
+      if (!fs.existsSync(normalizedPath)) {
+        console.error('[downloadInternDoc] Recovered file also does not exist:', normalizedPath);
+        return res.status(404).json({ 
+          message: 'Document file not found'
         });
       }
     }
