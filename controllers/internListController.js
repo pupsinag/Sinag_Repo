@@ -105,7 +105,16 @@ exports.generateInternList = async (req, res) => {
       align: 'center',
     });
 
-    doc.moveDown(0.2);
+    doc.moveDown(0.1);
+
+    // ✅ Add Year and Section if provided
+    if (year_section) {
+      doc.fontSize(9).font('Helvetica').text(`YEAR & SECTION: ${year_section.toUpperCase()}`, {
+        width: pageWidth,
+        align: 'center',
+      });
+      doc.moveDown(0.1);
+    }
 
     doc.fontSize(9).font('Helvetica').text(`ADVISER: ${programAdviserName}`, {
       width: pageWidth,
