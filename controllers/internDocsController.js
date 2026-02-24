@@ -85,11 +85,16 @@ async function uploadInternDoc(req, res) {
     /* =========================
        CREATE OR UPDATE DOC RECORD
     ========================= */
+    // Ensure file_path contains only the filename (strip 'uploads/' prefix if present)
+    const cleanFilePath = file.filename.includes('uploads/') 
+      ? file.filename.split('uploads/')[1] 
+      : file.filename;
+
     const docData = {
       intern_id: intern.id,
       document_type: targetColumn,
       file_name: file.originalname,
-      file_path: file.filename,
+      file_path: cleanFilePath,
       uploaded_date: new Date(),
       status: 'Pending',
     };
@@ -194,10 +199,15 @@ async function getInternDocuments(req, res) {
     // Transform array to object keyed by document_type for easier frontend use
     const docsObject = {};
     docsList.forEach(doc => {
+      // Clean up file_path: strip 'uploads/' prefix if present
+      const cleanFilePath = doc.file_path && doc.file_path.includes('uploads/')
+        ? doc.file_path.split('uploads/')[1]
+        : doc.file_path;
+
       docsObject[doc.document_type] = {
         id: doc.id,
         file_name: doc.file_name,
-        file_path: doc.file_path,
+        file_path: cleanFilePath,
         uploaded_date: doc.uploaded_date,
         status: doc.status,
         remarks: doc.remarks,

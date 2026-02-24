@@ -44,7 +44,11 @@ exports.getMatchingInterns = async (req, res) => {
       if (Array.isArray(internData.InternDocuments)) {
         internData.InternDocuments.forEach((doc) => {
           const docType = (doc.document_type || '').toLowerCase();
-          aggregatedDocs[docType] = doc.file_path || null;
+          // Clean file_path: strip 'uploads/' prefix if present
+          const cleanFilePath = doc.file_path && doc.file_path.includes('uploads/')
+            ? doc.file_path.split('uploads/')[1]
+            : doc.file_path;
+          aggregatedDocs[docType] = cleanFilePath || null;
         });
       }
       

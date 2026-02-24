@@ -245,7 +245,11 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       const docMap = {};
       docsArray.forEach(doc => {
         if (doc.document_type) {
-          docMap[doc.document_type.toLowerCase()] = doc.file_path;
+          // Clean file_path: strip 'uploads/' prefix if present
+          const cleanFilePath = doc.file_path && doc.file_path.includes('uploads/')
+            ? doc.file_path.split('uploads/')[1]
+            : doc.file_path;
+          docMap[doc.document_type.toLowerCase()] = cleanFilePath;
         }
       });
 
