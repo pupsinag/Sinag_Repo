@@ -173,13 +173,49 @@ exports.getInternsForAdviser = async (req, res) => {
       console.log('[getInternsForAdviser] No intern IDs found for documents');
     }
 
-    // Step 5: Enrich interns with User, Company, and InternDocuments data
-    console.log('[getInternsForAdviser] Step 5: Enriching intern data...');
+    // Step 5: Transform InternDocuments array into flat object structure for frontend
+    console.log('[getInternsForAdviser] Step 5: Transforming document data for frontend...');
+    const docsByIntern = {};
+    
+    Object.entries(docsMap).forEach(([internId, docs]) => {
+      const docObj = {};
+      // Map document_type to frontend field names
+      docs.forEach((doc) => {
+        const docType = doc.document_type || '';
+        switch (docType.toLowerCase()) {
+          case 'consent_form':
+            docObj.consent_form = doc.file_path;
+            break;
+          case 'notarized_agreement':
+            docObj.notarized_agreement = doc.file_path;
+            break;
+          case 'resume':
+            docObj.resume = doc.file_path;
+            break;
+          case 'cor':
+            docObj.cor = doc.file_path;
+            break;
+          case 'insurance':
+            docObj.insurance = doc.file_path;
+            break;
+          case 'medical_cert':
+            docObj.medical_cert = doc.file_path;
+            break;
+          default:
+            break;
+        }
+      });
+      docsByIntern[internId] = docObj;
+    });
+    console.log('[getInternsForAdviser] Step 5 COMPLETE: Documents transformed');
+
+    // Step 6: Enrich interns with User, Company, and transformed document data
+    console.log('[getInternsForAdviser] Step 6: Enriching intern data...');
     const enrichedInterns = interns.map((intern) => ({
       ...intern,
       User: users[intern.user_id] || null,
       company: intern.company_id ? companies[intern.company_id] || null : null,
-      InternDocuments: docsMap[intern.id] || [],
+      ...docsByIntern[intern.id] || {}, // Flatten documents into intern object
     }));
 
     console.log(`[getInternsForAdviser] ===== SUCCESS: Returning ${enrichedInterns.length} enriched interns with documents =====\n`);
