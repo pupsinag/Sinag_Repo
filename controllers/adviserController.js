@@ -39,19 +39,19 @@ exports.getMatchingInterns = async (req, res) => {
     const transformedInterns = interns.map((intern) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
       
-      // Transform InternDocuments array into object
-      const docsObject = {};
+      // Aggregate all documents into a single object with document_type as key
+      const aggregatedDocs = {};
       if (Array.isArray(internData.InternDocuments)) {
         internData.InternDocuments.forEach((doc) => {
-          const docType = doc.document_type || '';
-          // Use snake_case as key (consent_form, notarized_agreement, etc.)
-          docsObject[docType.toLowerCase()] = doc.file_path;
+          const docType = (doc.document_type || '').toLowerCase();
+          aggregatedDocs[docType] = doc.file_path || null;
         });
       }
       
+      // Return as array with single element (matching frontend expectation: InternDocuments[0])
       return {
         ...internData,
-        InternDocuments: docsObject, // Replace array with object
+        InternDocuments: [aggregatedDocs], // Wrap in array for frontend
       };
     });
     
