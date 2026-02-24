@@ -17,6 +17,7 @@ async function uploadInternDoc(req, res) {
     console.log('[DEBUG] uploadInternDoc - req.body:', req.body);
 
     const file = req.file;
+    console.log('📤 [UPLOAD] req.file:', file ? { filename: file.filename, originalname: file.originalname, size: file.size } : 'MISSING');
 
     if (!file) {
       console.error('❌ No file provided in request');
@@ -125,11 +126,27 @@ async function uploadInternDoc(req, res) {
       });
     }
 
+    // Verify file exists on disk
+    const filePath = path.join(__dirname, '..', 'uploads', verifyDoc.file_path);
+    const fileExists = fs.existsSync(filePath);
+    console.log('📁 [FILE CHECK]', filePath, '→', fileExists ? '✅ EXISTS' : '❌ NOT FOUND');
+
+    if (!fileExists) {
+      console.error('❌ CRITICAL: File was not saved to disk!', filePath);
+      return res.status(500).json({
+        message: 'Document upload failed - file not saved to disk',
+        error: 'File system error',
+        debug: { expected_path: filePath, db_file_path: verifyDoc.file_path }
+      });
+    }
+
     console.log('✅ Document verified in database:', {
       id: verifyDoc.id,
       intern_id: verifyDoc.intern_id,
       document_type: verifyDoc.document_type,
       file_path: verifyDoc.file_path,
+      multer_filename: file.filename,
+      match: file.filename === verifyDoc.file_path ? '✅ MATCH' : '❌ MISMATCH',
     });
 
     return res.json({
