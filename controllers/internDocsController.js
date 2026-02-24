@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { Intern, Company, InternDocuments } = require('../models');
+const { Intern, Company, InternDocuments, User } = require('../models');
 
 /* =========================
    UPLOAD / UPDATE INTERN DOCUMENT
@@ -288,8 +288,10 @@ async function downloadInternDoc(req, res) {
       return res.status(403).json({ message: 'You do not have permission to view this document' });
     }
 
-    // Get the intern
-    const intern = await Intern.findByPk(internId);
+    // Get the intern with User details
+    const intern = await Intern.findByPk(internId, {
+      include: { model: User, as: 'User' }
+    });
     if (!intern) {
       console.error('[downloadInternDoc] Intern not found:', internId);
       return res.status(404).json({ message: 'Intern not found' });
@@ -347,24 +349,61 @@ async function downloadInternDoc(req, res) {
 
     // Check if file exists
     if (!fs.existsSync(normalizedPath)) {
-      console.error('[downloadInternDoc] File does not exist:', normalizedPath);
+      console.error('[downloadInternDoc] File does not exist at stored path:', normalizedPath);
       console.log('[downloadInternDoc] Stored path in DB:', doc.file_path);
       
-      // Try to suggest the actual file if it has different naming
+      // Try to find matching file in uploads directory
       const uploadsPath = path.join(__dirname, '..', 'uploads');
-      const files = fs.readdirSync(uploadsPath);
-      const possibleMatches = files.filter(f => 
-        f.toLowerCase().includes(documentType.toLowerCase()) ||
-        f.toLowerCase().includes(intern.User?.lastName?.toLowerCase())
-      );
+      let matchedFile = null;
       
-      console.log('[downloadInternDoc] Possible matching files:', possibleMatches);
-      
-      return res.status(404).json({ 
-        message: 'Document file not found on server',
-        storedPath: doc.file_path,
-        suggestedFiles: possibleMatches.slice(0, 5)  // Suggest first 5 matches
-      });
+      try {
+        const files = fs.readdirSync(uploadsPath);
+        
+        // Pattern 1: Try to find by intern name + document type (e.g., SAMPLES_COR.pdf)
+        const internLastName = intern.User?.lastName?.toUpperCase() || '';
+        const docTypeUpper = documentType.toUpperCase();
+        
+        if (internLastName && docTypeUpper) {
+          matchedFile = files.find(f => 
+            f.toUpperCase().includes(internLastName) && 
+            f.toUpperCase().includes(docTypeUpper)
+          );
+          if (matchedFile) {
+            console.log('[downloadInternDoc] Found matching file by name pattern:', matchedFile);
+          }
+        }
+        
+        // Pattern 2: If no match, try to find any file with the document type in name (last resort)
+        if (!matchedFile && docTypeUpper) {
+          matchedFile = files.find(f => f.toUpperCase().includes(docTypeUpper));
+          if (matchedFile) {
+            console.log('[downloadInternDoc] Found file by document type pattern:', matchedFile);
+          }
+        }
+        
+        if (matchedFile) {
+          normalizedPath = path.join(uploadsPath, matchedFile);
+          console.log('[downloadInternDoc] Using recovered file path:', normalizedPath);
+        } else {
+          const possibleMatches = files.filter(f => 
+            f.toLowerCase().includes(documentType.toLowerCase()) ||
+            f.toLowerCase().includes((intern.User?.lastName || '').toLowerCase())
+          );
+          
+          console.log('[downloadInternDoc] Possible matching files:', possibleMatches);
+          
+          return res.status(404).json({ 
+            message: 'Document file not found on server',
+            storedPath: doc.file_path,
+            suggestedFiles: possibleMatches.slice(0, 5)
+          });
+        }
+      } catch (readErr) {
+        console.error('[downloadInternDoc] Error searching for file:', readErr.message);
+        return res.status(404).json({ 
+          message: 'Document file not found and recovery failed'
+        });
+      }
     }
 
     console.log('[downloadInternDoc] Serving file:', normalizedPath);
