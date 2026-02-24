@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
+const { Op } = require('sequelize');
 
 const { Intern, User, Company, InternDocuments } = require('../models');
 
@@ -31,8 +32,22 @@ exports.generateInternList = async (req, res) => {
     });
 
     // ✅ Get the program's adviser for the header (if no individual adviser assigned)
+    // ✅ IMPORTANT: Also filter by year_section if provided
+    let adviserWhere = { role: 'adviser', program };
+    if (year_section) {
+      // Try to match adviser with the year_section
+      adviserWhere = {
+        role: 'adviser',
+        program,
+        [Op.or]: [
+          { yearSection: year_section },
+          { year_section: year_section },
+        ],
+      };
+    }
+    
     const programAdviser = await User.findOne({
-      where: { role: 'adviser', program },
+      where: adviserWhere,
     });
     const programAdviserName = programAdviser 
       ? `${programAdviser.firstName || ''} ${programAdviser.lastName || ''}`.trim().toUpperCase() 
