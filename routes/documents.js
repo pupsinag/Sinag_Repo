@@ -6,7 +6,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const upload = require('../middleware/upload');
 
 // Controllers
-const { uploadInternDoc, getInternDocuments } = require('../controllers/internDocsController');
+const { uploadInternDoc, getInternDocuments, downloadInternDoc, validateInternDoc } = require('../controllers/internDocsController');
 
 const consentController = require('../controllers/consentController');
 const notarizedAgreementController = require('../controllers/notarizedAgreementController');
@@ -44,6 +44,12 @@ router.post(
 
 // Get all document statuses for logged-in intern
 router.get('/intern-docs/me', getInternDocuments);
+
+// Download specific intern document (for adviser/admin)
+router.get('/intern-docs/download/:internId/:documentType', downloadInternDoc);
+
+// Validate if intern document file exists
+router.get('/intern-docs/validate/:internId/:documentType', validateInternDoc);
 
 /* =========================
    CONSENT FORM ROUTES

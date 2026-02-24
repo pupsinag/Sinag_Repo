@@ -85,16 +85,11 @@ async function uploadInternDoc(req, res) {
     /* =========================
        CREATE OR UPDATE DOC RECORD
     ========================= */
-    // Ensure file_path contains only the filename (strip 'uploads/' prefix if present)
-    const cleanFilePath = file.filename.includes('uploads/') 
-      ? file.filename.split('uploads/')[1] 
-      : file.filename;
-
     const docData = {
       intern_id: intern.id,
       document_type: targetColumn,
       file_name: file.originalname,
-      file_path: cleanFilePath,
+      file_path: file.filename,
       uploaded_date: new Date(),
       status: 'Pending',
     };
@@ -199,15 +194,10 @@ async function getInternDocuments(req, res) {
     // Transform array to object keyed by document_type for easier frontend use
     const docsObject = {};
     docsList.forEach(doc => {
-      // Clean up file_path: strip 'uploads/' prefix if present
-      const cleanFilePath = doc.file_path && doc.file_path.includes('uploads/')
-        ? doc.file_path.split('uploads/')[1]
-        : doc.file_path;
-
       docsObject[doc.document_type] = {
         id: doc.id,
         file_name: doc.file_name,
-        file_path: cleanFilePath,
+        file_path: doc.file_path,
         uploaded_date: doc.uploaded_date,
         status: doc.status,
         remarks: doc.remarks,
@@ -279,8 +269,167 @@ async function deleteInternDoc(req, res) {
   }
 }
 
+/* =========================
+   GET INTERN DOCUMENT (For Adviser/Admin viewing)
+========================= */
+// GET /api/auth/intern-docs/download/:internId/:documentType
+async function downloadInternDoc(req, res) {
+  try {
+    const { internId, documentType } = req.params;
+    const user = req.user;
+
+    console.log('[downloadInternDoc] User:', { id: user.id, role: user.role });
+    console.log('[downloadInternDoc] Requested:', { internId, documentType });
+
+    // Verify user is adviser, coordinator, or superadmin
+    const allowedRoles = ['adviser', 'coordinator', 'superadmin'];
+    if (!allowedRoles.includes(user.role)) {
+      console.error('[downloadInternDoc] User role not allowed:', user.role);
+      return res.status(403).json({ message: 'You do not have permission to view this document' });
+    }
+
+    // Get the intern
+    const intern = await Intern.findByPk(internId);
+    if (!intern) {
+      console.error('[downloadInternDoc] Intern not found:', internId);
+      return res.status(404).json({ message: 'Intern not found' });
+    }
+
+    // If user is adviser, verify they're assigned to this intern's program
+    if (user.role === 'adviser') {
+      if (user.program !== intern.program) {
+        console.error('[downloadInternDoc] Adviser not assigned to intern program');
+        return res.status(403).json({ message: 'You are not assigned to this intern\'s program' });
+      }
+    }
+
+    // Get the document
+    const doc = await InternDocuments.findOne({
+      where: { intern_id: internId, document_type: documentType },
+    });
+
+    if (!doc || !doc.file_path) {
+      console.error('[downloadInternDoc] Document not found:', { internId, documentType });
+      return res.status(404).json({ message: 'Document not found' });
+    }
+
+    // Build file path - handle both absolute and relative paths
+    let filePath = doc.file_path;
+    if (!filePath.includes(path.sep) && !filePath.startsWith('/')) {
+      // If it's just a filename, construct the full path
+      filePath = path.join(__dirname, '..', 'uploads', filePath);
+    } else if (!path.isAbsolute(filePath)) {
+      // If it's a relative path but not just a filename
+      filePath = path.join(__dirname, '..', filePath);
+    }
+
+    // Security: Normalize and verify the path is within uploads directory
+    const uploadsDir = path.normalize(path.join(__dirname, '..', 'uploads'));
+    const normalizedPath = path.normalize(filePath);
+    
+    if (!normalizedPath.startsWith(uploadsDir)) {
+      console.error('[downloadInternDoc] Path traversal attempt detected:', normalizedPath);
+      return res.status(400).json({ message: 'Invalid file path' });
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(normalizedPath)) {
+      console.error('[downloadInternDoc] File does not exist:', normalizedPath);
+      console.log('[downloadInternDoc] Stored path in DB:', doc.file_path);
+      
+      // Try to suggest the actual file if it has different naming
+      const uploadsPath = path.join(__dirname, '..', 'uploads');
+      const files = fs.readdirSync(uploadsPath);
+      const possibleMatches = files.filter(f => 
+        f.toLowerCase().includes(documentType.toLowerCase()) ||
+        f.toLowerCase().includes(intern.User?.lastName?.toLowerCase())
+      );
+      
+      console.log('[downloadInternDoc] Possible matching files:', possibleMatches);
+      
+      return res.status(404).json({ 
+        message: 'Document file not found on server',
+        storedPath: doc.file_path,
+        suggestedFiles: possibleMatches.slice(0, 5)  // Suggest first 5 matches
+      });
+    }
+
+    console.log('[downloadInternDoc] Serving file:', normalizedPath);
+
+    // Serve the file
+    res.download(normalizedPath, doc.file_name, (err) => {
+      if (err) {
+        console.error('[downloadInternDoc] Error downloading file:', err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ message: 'Error downloading document' });
+        }
+      }
+    });
+  } catch (err) {
+    console.error('❌ DOWNLOAD INTERN DOC ERROR:', err.message);
+    console.error('Stack trace:', err.stack);
+    res.status(500).json({
+      message: 'Failed to download document',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
+  }
+}
+
+/* =========================
+   VALIDATE INTERN DOCUMENT (Check if file exists)
+========================= */
+// GET /api/auth/intern-docs/validate/:internId/:documentType
+async function validateInternDoc(req, res) {
+  try {
+    const { internId, documentType } = req.params;
+    const user = req.user;
+
+    console.log('[validateInternDoc] Checking:', { internId, documentType });
+
+    // Get the document
+    const doc = await InternDocuments.findOne({
+      where: { intern_id: internId, document_type: documentType },
+    });
+
+    if (!doc) {
+      console.log('[validateInternDoc] Document record not found');
+      return res.json({ exists: false, hasFile: false, reason: 'Document not in database' });
+    }
+
+    if (!doc.file_path) {
+      console.log('[validateInternDoc] Document record exists but no file_path');
+      return res.json({ exists: false, hasFile: false, reason: 'No file path stored' });
+    }
+
+    // Build file path
+    let filePath = doc.file_path;
+    if (!filePath.includes(path.sep) && !filePath.startsWith('/')) {
+      filePath = path.join(__dirname, '..', 'uploads', filePath);
+    } else if (!path.isAbsolute(filePath)) {
+      filePath = path.join(__dirname, '..', filePath);
+    }
+
+    const fileExists = fs.existsSync(filePath);
+    console.log('[validateInternDoc] File check:', { filePath, exists: fileExists });
+
+    return res.json({
+      exists: true,
+      hasFile: fileExists,
+      fileName: doc.file_name,
+      filePath: doc.file_path,
+      status: doc.status,
+      uploadedDate: doc.uploaded_date,
+    });
+  } catch (err) {
+    console.error('❌ VALIDATE INTERN DOC ERROR:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   uploadInternDoc,
   getInternDocuments,
   deleteInternDoc,
+  downloadInternDoc,
+  validateInternDoc,
 };
