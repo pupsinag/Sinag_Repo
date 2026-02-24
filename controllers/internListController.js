@@ -36,12 +36,17 @@ exports.generateInternList = async (req, res) => {
     let adviserWhere = { role: 'adviser', program };
     if (year_section) {
       // Try to match adviser with the year_section
+      // Use proper AND/OR combination for Sequelize
       adviserWhere = {
-        role: 'adviser',
-        program,
-        [Op.or]: [
-          { yearSection: year_section },
-          { year_section: year_section },
+        [Op.and]: [
+          { role: 'adviser' },
+          { program },
+          {
+            [Op.or]: [
+              { yearSection: year_section },
+              { year_section: year_section },
+            ],
+          },
         ],
       };
     }
