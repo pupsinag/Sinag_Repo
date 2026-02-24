@@ -134,14 +134,7 @@ async function uploadInternDoc(req, res) {
 
     return res.json({
       message: 'Document uploaded successfully',
-      document: {
-        id: verifyDoc.id,
-        document_type: verifyDoc.document_type,
-        file_name: verifyDoc.file_name,
-        file_path: verifyDoc.file_path,
-        uploaded_date: verifyDoc.uploaded_date,
-        status: verifyDoc.status,
-      }
+      file: verifyDoc.file_path,
     });
   } catch (err) {
     console.error('❌ UPLOAD INTERN DOC ERROR:', err.message);
@@ -192,22 +185,14 @@ async function getInternDocuments(req, res) {
     });
 
     // Transform array to object keyed by document_type for easier frontend use
-    const docsObject = {};
+    const docsObject = {
+      MOA: intern.company?.moaFile || null,
+    };
     docsList.forEach(doc => {
-      docsObject[doc.document_type] = {
-        id: doc.id,
-        file_name: doc.file_name,
-        file_path: doc.file_path,
-        uploaded_date: doc.uploaded_date,
-        status: doc.status,
-        remarks: doc.remarks,
-      };
+      docsObject[doc.document_type] = doc.file_path;
     });
 
-    return res.json({
-      documents: docsObject,
-      MOA: intern.company?.moaFile || null,
-    });
+    return res.json(docsObject);
   } catch (err) {
     console.error('❌ GET INTERN DOCS ERROR:', err.message);
     console.error('Stack trace:', err.stack);
@@ -246,21 +231,29 @@ async function deleteInternDoc(req, res) {
       return res.status(404).json({ message: 'Intern not found' });
     }
 
-    const docs = await InternDocuments.findOne({
-      where: { intern_id: intern.id },
+    const doc = await InternDocuments.findOne({
+      where: { intern_id: intern.id, document_type: column },
     });
 
-    if (!docs || !docs[column]) {
+    if (!doc) {
       return res.status(404).json({ message: 'Document not found' });
     }
 
-    const filePath = path.join(__dirname, '..', 'uploads', docs[column]);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // Delete the file from disk
+    if (doc.file_path) {
+      const filePath = path.join(__dirname, '..', 'uploads', doc.file_path);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          console.log('✅ Deleted file:', doc.file_path);
+        } catch (err) {
+          console.warn('⚠️ Failed to delete file from disk:', err.message);
+        }
+      }
     }
 
-    docs[column] = null;
-    await docs.save();
+    // Delete the database record
+    await doc.destroy();
 
     return res.json({ message: 'Document deleted successfully' });
   } catch (err) {
