@@ -120,6 +120,51 @@ exports.getInternsForAdviser = async (req, res) => {
 
     console.log('[getInternsForAdviser] Intern IDs:', interns.map((i) => i.id).join(', '));
 
+    // Step 1.5: Auto-assign advisers if not already assigned
+    console.log('[getInternsForAdviser] Step 1.5: Auto-assigning advisers to interns without advisers...');
+    const internsWithoutAdvisers = interns.filter((i) => !i.adviser_id);
+    
+    if (internsWithoutAdvisers.length > 0) {
+      console.log(`[getInternsForAdviser] Found ${internsWithoutAdvisers.length} interns without advisers`);
+      
+      // Fetch user data for these interns to get their program and yearSection
+      const userIds = internsWithoutAdvisers.map((i) => i.user_id);
+      const internUsers = await User.findAll({
+        where: { id: userIds },
+        attributes: ['id', 'program', 'yearSection'],
+        raw: true,
+      });
+      
+      // For each intern without adviser, find matching adviser by program + yearSection
+      for (const intern of internsWithoutAdvisers) {
+        const internUser = internUsers.find((u) => u.id === intern.user_id);
+        
+        if (internUser && internUser.program) {
+          // Find adviser with matching program and yearSection
+          const matchingAdviser = await User.findOne({
+            where: {
+              role: 'Adviser',
+              program: internUser.program,
+            },
+            attributes: ['id', 'program', 'yearSection'],
+            raw: true,
+          });
+          
+          if (matchingAdviser) {
+            // Update intern with adviser_id
+            await Intern.update(
+              { adviser_id: matchingAdviser.id },
+              { where: { id: intern.id } }
+            );
+            console.log(`[getInternsForAdviser] Assigned adviser ${matchingAdviser.id} to intern ${intern.id}`);
+            intern.adviser_id = matchingAdviser.id; // Update in-memory copy
+          }
+        }
+      }
+    } else {
+      console.log('[getInternsForAdviser] All interns already have advisers assigned');
+    }
+
     // Step 2: Get User data for each intern
     console.log('[getInternsForAdviser] Step 2: Fetching user data...');
     const internIds = interns.map((i) => i.user_id).filter(Boolean);
@@ -139,8 +184,29 @@ exports.getInternsForAdviser = async (req, res) => {
       });
     }
 
-    // Step 3: Get Company data for each intern
-    console.log('[getInternsForAdviser] Step 3: Fetching company data...');
+    // Step 3: Get Adviser data for each intern
+    console.log('[getInternsForAdviser] Step 3: Fetching adviser data...');
+    const adviserIds = interns.map((i) => i.adviser_id).filter(Boolean);
+    const advisers = {};
+    
+    if (adviserIds.length > 0) {
+      console.log('[getInternsForAdviser] Adviser IDs to fetch:', adviserIds.join(', '));
+      const adviserData = await User.findAll({
+        where: { id: adviserIds },
+        attributes: ['id', 'firstName', 'lastName', 'mi', 'email', 'program', 'yearSection'],
+        raw: true,
+      });
+      console.log(`[getInternsForAdviser] Step 3 COMPLETE: Found ${adviserData.length} advisers`);
+      
+      adviserData.forEach((a) => {
+        advisers[a.id] = a;
+      });
+    } else {
+      console.log('[getInternsForAdviser] No adviser IDs found');
+    }
+
+    // Step 4: Get Company data for each intern
+    console.log('[getInternsForAdviser] Step 4: Fetching company data...');
     const companyIds = interns.map((i) => i.company_id).filter(Boolean);
     const companies = {};
     
@@ -151,7 +217,7 @@ exports.getInternsForAdviser = async (req, res) => {
         attributes: ['id', 'name', 'email', 'address', 'supervisorName', 'natureOfBusiness'],
         raw: true,
       });
-      console.log(`[getInternsForAdviser] Step 3 COMPLETE: Found ${companyData.length} companies`);
+      console.log(`[getInternsForAdviser] Step 4 COMPLETE: Found ${companyData.length} companies`);
       
       companyData.forEach((c) => {
         companies[c.id] = c;
@@ -160,15 +226,62 @@ exports.getInternsForAdviser = async (req, res) => {
       console.log('[getInternsForAdviser] No company IDs found');
     }
 
-    // Step 4: Enrich interns with User and Company data
-    console.log('[getInternsForAdviser] Step 4: Enriching intern data...');
+    // Step 5: Get InternDocuments data for each intern
+    console.log('[getInternsForAdviser] Step 5: Fetching intern documents...');
+    const internIdsList = interns.map((i) => i.id).filter(Boolean);
+    const docsMap = {};
+    
+    if (internIdsList.length > 0) {
+      console.log('[getInternsForAdviser] Intern IDs to fetch documents for:', internIdsList.join(', '));
+      const allDocs = await require('../models').InternDocuments.findAll({
+        where: { intern_id: internIdsList },
+        raw: true,
+      });
+      console.log(`[getInternsForAdviser] Step 5 COMPLETE: Found ${allDocs.length} documents`);
+      
+      // Build map to accumulate ALL documents for each intern (not just the last one)
+      allDocs.forEach((doc) => {
+        if (!docsMap[doc.intern_id]) {
+          docsMap[doc.intern_id] = [];
+        }
+        docsMap[doc.intern_id].push(doc);
+      });
+    } else {
+      console.log('[getInternsForAdviser] No intern IDs found for documents');
+    }
+
+    // Step 6: Transform InternDocuments array into object structure for frontend
+    console.log('[getInternsForAdviser] Step 6: Transforming document data for frontend...');
+    const docsByIntern = {};
+    
+    Object.entries(docsMap).forEach(([internId, docs]) => {
+      const docObj = {};
+      // Map document_type to frontend field names (snake_case as expected by frontend)
+      docs.forEach((doc) => {
+        const docType = doc.document_type || '';
+        // Send as snake_case since frontend expects Ze.InternDocuments.consent_form
+        docObj[docType.toLowerCase()] = doc.file_path;
+      });
+      docsByIntern[internId] = docObj;
+      
+      // Debug: Log what we're sending for first intern
+      if (Object.keys(docsByIntern).length === 1) {
+        console.log('[getInternsForAdviser] Sample InternDocuments object:', JSON.stringify(docObj, null, 2));
+      }
+    });
+    console.log('[getInternsForAdviser] Step 6 COMPLETE: Documents transformed');
+
+    // Step 7: Enrich interns with User, Adviser, Company, and InternDocuments data
+    console.log('[getInternsForAdviser] Step 7: Enriching intern data...');
     const enrichedInterns = interns.map((intern) => ({
       ...intern,
       User: users[intern.user_id] || null,
+      Adviser: intern.adviser_id ? advisers[intern.adviser_id] || null : null,
       company: intern.company_id ? companies[intern.company_id] || null : null,
+      InternDocuments: docsByIntern[intern.id] || {}, // Keep as nested object, not spread
     }));
 
-    console.log(`[getInternsForAdviser] ===== SUCCESS: Returning ${enrichedInterns.length} enriched interns =====\n`);
+    console.log(`[getInternsForAdviser] ===== SUCCESS: Returning ${enrichedInterns.length} enriched interns with documents =====\n`);
     res.json(enrichedInterns);
   } catch (err) {
     console.error('\n❌ GET INTERNS FOR ADVISER ERROR');

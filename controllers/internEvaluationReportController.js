@@ -22,11 +22,19 @@ exports.generateInternEvaluationReport = async (req, res) => {
       return res.status(400).json({ message: 'Program is required' });
     }
 
-    // Fetch adviser name for the program
+    // Fetch adviser name for the program and year_section
+    let adviserWhere = { role: 'adviser', program };
+    
+    // If year_section is provided, also match on yearSection
+    if (year_section) {
+      adviserWhere.yearSection = year_section;
+    }
+    
     const adviser = await User.findOne({
-      where: { role: 'adviser', program },
+      where: adviserWhere,
     });
     const adviserName = adviser ? `${adviser.firstName || ''} ${adviser.lastName || ''}`.trim().toUpperCase() : 'N/A';
+    console.log('[generateInternEvaluationReport] Adviser where clause:', adviserWhere);
     console.log('[generateInternEvaluationReport] Adviser name:', adviserName);
 
     /* =============================

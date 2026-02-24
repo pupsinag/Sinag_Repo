@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { Intern, Company, InternDocuments } = require('../models');
+const { Intern, Company, InternDocuments, User } = require('../models');
 
 /* =========================
    UPLOAD / UPDATE INTERN DOCUMENT
@@ -58,7 +58,7 @@ async function uploadInternDoc(req, res) {
       });
     }
 
-    const validColumns = ['notarized_agreement', 'medical_cert', 'insurance', 'resume', 'cor', 'consent_form', 'portfolio'];
+    const validColumns = ['notarized_agreement', 'medical_cert', 'insurance', 'resume', 'cor', 'consent_form'];
     if (!validColumns.includes(targetColumn)) {
       return res.status(400).json({ message: 'Invalid document type' });
     }
@@ -132,11 +132,8 @@ async function uploadInternDoc(req, res) {
       file_path: verifyDoc.file_path,
     });
 
-    // Maintain backward-compatible response shape for the frontend
     return res.json({
       message: 'Document uploaded successfully',
-      column: verifyDoc.document_type,
-      file: verifyDoc.file_path,                        // legacy frontend expects `file`
       document: {
         id: verifyDoc.id,
         document_type: verifyDoc.document_type,
@@ -207,19 +204,9 @@ async function getInternDocuments(req, res) {
       };
     });
 
-    // Build legacy top-level mapping (keeps older frontend working)
-    const legacy = {};
-    const validColumns = ['consent_form','notarized_agreement','resume','cor','insurance','medical_cert'];
-    validColumns.forEach(col => {
-      legacy[col] = docsObject[col] ? docsObject[col].file_path : null;
-    });
-
-    // Also expose MOA at top-level for backward compatibility
-    legacy.MOA = intern.company?.moaFile || null;
-
     return res.json({
       documents: docsObject,
-      ...legacy,
+      MOA: intern.company?.moaFile || null,
     });
   } catch (err) {
     console.error('❌ GET INTERN DOCS ERROR:', err.message);
@@ -259,28 +246,21 @@ async function deleteInternDoc(req, res) {
       return res.status(404).json({ message: 'Intern not found' });
     }
 
-    // Find document by intern_id and document_type
-    const doc = await InternDocuments.findOne({
-      where: { 
-        intern_id: intern.id,
-        document_type: column
-      },
+    const docs = await InternDocuments.findOne({
+      where: { intern_id: intern.id },
     });
 
-    if (!doc) {
+    if (!docs || !docs[column]) {
       return res.status(404).json({ message: 'Document not found' });
     }
 
-    // Delete the physical file
-    const filePath = path.join(__dirname, '..', 'uploads', doc.file_path);
+    const filePath = path.join(__dirname, '..', 'uploads', docs[column]);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
-      console.log('✅ File deleted:', filePath);
     }
 
-    // Delete the database record
-    await doc.destroy();
-    console.log('✅ Database record deleted:', doc.id);
+    docs[column] = null;
+    await docs.save();
 
     return res.json({ message: 'Document deleted successfully' });
   } catch (err) {
@@ -290,229 +270,234 @@ async function deleteInternDoc(req, res) {
 }
 
 /* =========================
-   VIEW DOCUMENT (inline in browser)
+   GET INTERN DOCUMENT (For Adviser/Admin viewing)
 ========================= */
-// GET /api/auth/intern-docs/view/:docId
-async function viewInternDoc(req, res) {
+// GET /api/documents/intern-docs/download/:internId/:documentType
+async function downloadInternDoc(req, res) {
   try {
-    const { docId } = req.params;
+    const { internId, documentType } = req.params;
+    const user = req.user;
 
-    console.log('[viewInternDoc] Requesting doc ID:', docId, 'by user:', req.user.id, 'role:', req.user.role);
+    console.log('\n\n🔍 [downloadInternDoc] ========== DOWNLOAD REQUEST ==========');
+    console.log('[downloadInternDoc] User:', { id: user.id, role: user.role, program: user.program, yearSection: user.yearSection });
+    console.log('[downloadInternDoc] Requested:', { internId, documentType });
 
-    // Find the document
-    const doc = await InternDocuments.findOne({
-      where: { id: docId },
-    });
-
-    if (!doc) {
-      console.warn('[viewInternDoc] Document not found:', docId);
-      return res.status(404).json({ message: 'Document not found' });
+    // Verify user is adviser, coordinator, or superadmin
+    const allowedRoles = ['adviser', 'coordinator', 'superadmin'];
+    if (!allowedRoles.includes(user.role)) {
+      console.error('[downloadInternDoc] User role not allowed:', user.role);
+      return res.status(403).json({ message: 'You do not have permission to view this document' });
     }
 
-    // ✅ Verify access: Allow interns to view their own docs OR advisers to view assigned intern docs
-    let hasAccess = false;
-    const intern = await Intern.findByPk(doc.intern_id);
-    
+    // Get the intern
+    const intern = await Intern.findByPk(internId);
     if (!intern) {
-      console.warn('[viewInternDoc] Intern not found for doc:', docId);
+      console.error('[downloadInternDoc] Intern not found:', internId);
       return res.status(404).json({ message: 'Intern not found' });
     }
 
-    // Case 1: Intern viewing their own document
-    if (intern.user_id === req.user.id) {
-      hasAccess = true;
-      console.log('[viewInternDoc] Access granted: Intern viewing own document');
-    }
-    // Case 2: Adviser viewing assigned intern's document
-    else if (req.user.role === 'adviser' && intern.adviser_id === req.user.id) {
-      hasAccess = true;
-      console.log('[viewInternDoc] Access granted: Adviser viewing assigned intern document');
-    }
-    // Case 3: Coordinator/admin has access to all
-    else if (req.user.role === 'coordinator' || req.user.role === 'superadmin') {
-      hasAccess = true;
-      console.log('[viewInternDoc] Access granted: Coordinator/admin viewing document');
-    }
-
-    if (!hasAccess) {
-      console.warn('[viewInternDoc] Unauthorized access attempt for doc:', docId, 'by user:', req.user.id);
-      return res.status(403).json({ message: 'Access denied' });
-    }
-
-    // Try to find the file with fallbacks
-    let actualFilePath = null;
-    const uploadsDir = path.join(__dirname, '..', 'uploads');
-    
-    let filePath = path.join(uploadsDir, doc.file_path);
-    if (fs.existsSync(filePath)) {
-      actualFilePath = filePath;
-    } else {
-      filePath = path.join(uploadsDir, doc.file_name);
-      if (fs.existsSync(filePath)) {
-        actualFilePath = filePath;
-      } else {
-        const uploads = fs.readdirSync(uploadsDir);
-        const docNameBase = path.basename(doc.file_name, path.extname(doc.file_name));
-        const ext = path.extname(doc.file_name);
-        const found = uploads.find(f => f.includes(docNameBase) && f.endsWith(ext));
-        if (found) {
-          actualFilePath = path.join(uploadsDir, found);
-        }
+    // If user is adviser, verify they're assigned to this intern
+    if (user.role === 'adviser') {
+      // Check if directly assigned via adviser_id OR matching program + yearSection
+      const isDirectlyAssigned = intern.adviser_id === user.id;
+      const isProgramMatch = user.program && intern.program && user.program === intern.program;
+      
+      // ✅ FIXED: Normalize yearSection comparison (remove spaces, convert to lowercase)
+      // This matches the logic in adviserController.getMatchingInterns()
+      let isYearSectionMatch = false;
+      if (user.yearSection && intern.year_section) {
+        const normalizedAdviserYearSection = (user.yearSection || '').replace(/\s/g, '').toLowerCase();
+        const normalizedInternYearSection = (intern.year_section || '').replace(/\s/g, '').toLowerCase();
+        isYearSectionMatch = normalizedAdviserYearSection === normalizedInternYearSection;
+      }
+      
+      const isProgramAndYearMatch = isProgramMatch && isYearSectionMatch;
+      
+      if (!isDirectlyAssigned && !isProgramAndYearMatch) {
+        console.error('[downloadInternDoc] Adviser not authorized for intern', {
+          adviserId: user.id,
+          internAdvertiserId: intern.adviser_id,
+          adviserProgram: user.program,
+          internProgram: intern.program,
+          adviserYearSection: user.yearSection,
+          normalizedAdviserYearSection: (user.yearSection || '').replace(/\s/g, '').toLowerCase(),
+          internYearSection: intern.year_section,
+          normalizedInternYearSection: (intern.year_section || '').replace(/\s/g, '').toLowerCase(),
+        });
+        return res.status(403).json({ message: 'You are not authorized to access this intern\'s documents' });
       }
     }
 
-    if (!actualFilePath) {
-      console.error('[viewInternDoc] File not found:', doc.file_path);
-      return res.status(404).json({ message: 'File not found on server' });
-    }
-
-    // Determine content type based on file extension
-    const ext = path.extname(actualFilePath).toLowerCase();
-    let contentType = 'application/octet-stream';
-    
-    if (ext === '.pdf') {
-      contentType = 'application/pdf';
-    } else if (['.jpg', '.jpeg'].includes(ext)) {
-      contentType = 'image/jpeg';
-    } else if (ext === '.png') {
-      contentType = 'image/png';
-    } else if (ext === '.gif') {
-      contentType = 'image/gif';
-    }
-
-    // Set headers to display inline instead of download
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `inline; filename="${doc.file_name}"`);
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-
-    // Stream the file
-    const fileStream = fs.createReadStream(actualFilePath);
-    fileStream.pipe(res);
-
-    fileStream.on('error', (err) => {
-      console.error('[viewInternDoc] Stream error:', err.message);
-      res.status(500).json({ message: 'Error viewing file' });
+    // Get the document
+    const doc = await InternDocuments.findOne({
+      where: { intern_id: internId, document_type: documentType },
     });
 
-    console.log('✅ Document view started:', doc.file_name);
+    if (!doc || !doc.file_path) {
+      console.error('[downloadInternDoc] Document not found:', { internId, documentType });
+      return res.status(404).json({ message: 'Document not found' });
+    }
+
+    // Build file path - handle both absolute and relative paths
+    let filePath = doc.file_path;
+    if (!filePath.includes(path.sep) && !filePath.startsWith('/')) {
+      // If it's just a filename, construct the full path
+      filePath = path.join(__dirname, '..', 'uploads', filePath);
+    } else if (!path.isAbsolute(filePath)) {
+      // If it's a relative path but not just a filename
+      filePath = path.join(__dirname, '..', filePath);
+    }
+
+    // Security: Normalize and verify the path is within uploads directory
+    const uploadsDir = path.normalize(path.join(__dirname, '..', 'uploads'));
+    const normalizedPath = path.normalize(filePath);
+    
+    if (!normalizedPath.startsWith(uploadsDir)) {
+      console.error('[downloadInternDoc] Path traversal attempt detected:', normalizedPath);
+      return res.status(400).json({ message: 'Invalid file path' });
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(normalizedPath)) {
+      console.error('[downloadInternDoc] File does not exist:', normalizedPath);
+      console.log('[downloadInternDoc] Stored path in DB:', doc.file_path);
+      
+      // Try to find actual file in uploads directory
+      const uploadsPath = path.join(__dirname, '..', 'uploads');
+      let recoveredFile = null;
+      
+      try {
+        const files = fs.readdirSync(uploadsPath);
+        
+        // Pattern 1: Look for files matching intern lastname + document type
+        const internUser = await Intern.findByPk(internId, { include: [{ model: User, as: 'User' }] });
+        const internLastName = internUser?.User?.lastName?.toUpperCase() || '';
+        const docTypeUpper = documentType.toUpperCase();
+        
+        if (internLastName && docTypeUpper) {
+          recoveredFile = files.find(f => 
+            f.toUpperCase().includes(internLastName) && 
+            f.toUpperCase().includes(docTypeUpper)
+          );
+          if (recoveredFile) {
+            console.log('[downloadInternDoc] Found matching file by name pattern:', recoveredFile);
+            normalizedPath = path.join(uploadsPath, recoveredFile);
+            // Update database with correct path for next time
+            doc.file_path = recoveredFile;
+            await doc.save().catch(e => console.warn('Could not update DB with recovered path:', e.message));
+          }
+        }
+        
+        // Pattern 2: If no match, try document type only (last resort)
+        if (!recoveredFile && docTypeUpper) {
+          recoveredFile = files.find(f => f.toUpperCase().includes(docTypeUpper));
+          if (recoveredFile) {
+            console.log('[downloadInternDoc] Found file by document type pattern:', recoveredFile);
+            normalizedPath = path.join(uploadsPath, recoveredFile);
+            doc.file_path = recoveredFile;
+            await doc.save().catch(e => console.warn('Could not update DB with recovered path:', e.message));
+          }
+        }
+        
+        if (!recoveredFile) {
+          const possibleMatches = files.filter(f => 
+            f.toLowerCase().includes(documentType.toLowerCase()) ||
+            (internUser?.User?.lastName && f.toLowerCase().includes(internUser.User.lastName.toLowerCase()))
+          );
+          
+          console.log('[downloadInternDoc] No matching file found. Possible matches:', possibleMatches.slice(0, 10));
+          
+          return res.status(404).json({ 
+            message: 'Document file not found on server',
+            storedPath: doc.file_path,
+            suggestedFiles: possibleMatches.slice(0, 5)
+          });
+        }
+      } catch (readErr) {
+        console.error('[downloadInternDoc] Error searching for file:', readErr.message);
+        return res.status(404).json({ 
+          message: 'Document file not found and recovery failed'
+        });
+      }
+      
+      // Verify recovered file exists before continuing
+      if (!fs.existsSync(normalizedPath)) {
+        console.error('[downloadInternDoc] Recovered file also does not exist:', normalizedPath);
+        return res.status(404).json({ 
+          message: 'Document file not found'
+        });
+      }
+    }
+
+    console.log('[downloadInternDoc] Serving file:', normalizedPath);
+
+    // Serve the file
+    res.download(normalizedPath, doc.file_name, (err) => {
+      if (err) {
+        console.error('[downloadInternDoc] Error downloading file:', err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ message: 'Error downloading document' });
+        }
+      }
+    });
   } catch (err) {
-    console.error('❌ VIEW INTERN DOC ERROR:', err.message);
-    return res.status(500).json({
-      message: 'Failed to view document',
+    console.error('❌ DOWNLOAD INTERN DOC ERROR:', err.message);
+    console.error('Stack trace:', err.stack);
+    res.status(500).json({
+      message: 'Failed to download document',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined,
     });
   }
 }
 
 /* =========================
-   DOWNLOAD DOCUMENT (force download)
+   VALIDATE INTERN DOCUMENT (Check if file exists)
 ========================= */
-// GET /api/auth/intern-docs/download/:docId
-async function downloadInternDoc(req, res) {
+// GET /api/auth/intern-docs/validate/:internId/:documentType
+async function validateInternDoc(req, res) {
   try {
-    const { docId } = req.params;
+    const { internId, documentType } = req.params;
+    const user = req.user;
 
-    console.log('[downloadInternDoc] Requesting doc ID:', docId, 'by user:', req.user.id);
+    console.log('[validateInternDoc] Checking:', { internId, documentType });
 
-    // Find the document
+    // Get the document
     const doc = await InternDocuments.findOne({
-      where: { id: docId },
+      where: { intern_id: internId, document_type: documentType },
     });
 
     if (!doc) {
-      console.warn('[downloadInternDoc] Document not found:', docId);
-      return res.status(404).json({ message: 'Document not found' });
+      console.log('[validateInternDoc] Document record not found');
+      return res.json({ exists: false, hasFile: false, reason: 'Document not in database' });
     }
 
-    // ✅ Verify access: Allow interns to download their own docs OR advisers to download assigned intern docs
-    let hasAccess = false;
-    const intern = await Intern.findByPk(doc.intern_id);
-    
-    if (!intern) {
-      console.warn('[downloadInternDoc] Intern not found for doc:', docId);
-      return res.status(404).json({ message: 'Intern not found' });
+    if (!doc.file_path) {
+      console.log('[validateInternDoc] Document record exists but no file_path');
+      return res.json({ exists: false, hasFile: false, reason: 'No file path stored' });
     }
 
-    // Case 1: Intern downloading their own document
-    if (intern.user_id === req.user.id) {
-      hasAccess = true;
-      console.log('[downloadInternDoc] Access granted: Intern downloading own document');
-    }
-    // Case 2: Adviser downloading assigned intern's document
-    else if (req.user.role === 'adviser' && intern.adviser_id === req.user.id) {
-      hasAccess = true;
-      console.log('[downloadInternDoc] Access granted: Adviser downloading assigned intern document');
-    }
-    // Case 3: Coordinator/admin has access to all
-    else if (req.user.role === 'coordinator' || req.user.role === 'superadmin') {
-      hasAccess = true;
-      console.log('[downloadInternDoc] Access granted: Coordinator/admin downloading document');
+    // Build file path
+    let filePath = doc.file_path;
+    if (!filePath.includes(path.sep) && !filePath.startsWith('/')) {
+      filePath = path.join(__dirname, '..', 'uploads', filePath);
+    } else if (!path.isAbsolute(filePath)) {
+      filePath = path.join(__dirname, '..', filePath);
     }
 
-    if (!hasAccess) {
-      console.warn('[downloadInternDoc] Unauthorized access attempt for doc:', docId, 'by user:', req.user.id);
-      return res.status(403).json({ message: 'Access denied - you cannot view this document' });
-    }
+    const fileExists = fs.existsSync(filePath);
+    console.log('[validateInternDoc] File check:', { filePath, exists: fileExists });
 
-    // Try to find the file - check multiple possible paths for backward compatibility
-    let actualFilePath = null;
-    const uploadsDir = path.join(__dirname, '..', 'uploads');
-    
-    // Primary path: use file_path from database
-    let filePath = path.join(uploadsDir, doc.file_path);
-    console.log('[downloadInternDoc] Primary path:', filePath, 'exists:', fs.existsSync(filePath));
-    
-    if (fs.existsSync(filePath)) {
-      actualFilePath = filePath;
-    } else {
-      // Fallback: try using file_name (for old/migrated data)
-      filePath = path.join(uploadsDir, doc.file_name);
-      console.log('[downloadInternDoc] Fallback path:', filePath, 'exists:', fs.existsSync(filePath));
-      if (fs.existsSync(filePath)) {
-        actualFilePath = filePath;
-      } else {
-        // Last resort: search for files with similar naming pattern
-        console.warn('[downloadInternDoc] Attempting to find file by pattern...');
-        const uploads = fs.readdirSync(uploadsDir);
-        const docNameBase = path.basename(doc.file_name, path.extname(doc.file_name));
-        const ext = path.extname(doc.file_name);
-        const found = uploads.find(f => f.includes(docNameBase) && f.endsWith(ext));
-        
-        if (found) {
-          actualFilePath = path.join(uploadsDir, found);
-          console.log('[downloadInternDoc] Found by pattern:', found);
-        }
-      }
-    }
-
-    if (!actualFilePath) {
-      console.error('[downloadInternDoc] File does not exist on disk. file_path:', doc.file_path, 'file_name:', doc.file_name);
-      return res.status(404).json({ 
-        message: 'File not found on server',
-        details: process.env.NODE_ENV === 'development' ? { stored_path: doc.file_path, file_name: doc.file_name } : undefined
-      });
-    }
-
-    // Set headers for download
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
-
-    // Stream the file
-    const fileStream = fs.createReadStream(actualFilePath);
-    fileStream.pipe(res);
-
-    fileStream.on('error', (err) => {
-      console.error('[downloadInternDoc] Stream error:', err.message);
-      res.status(500).json({ message: 'Error downloading file' });
+    return res.json({
+      exists: true,
+      hasFile: fileExists,
+      fileName: doc.file_name,
+      filePath: doc.file_path,
+      status: doc.status,
+      uploadedDate: doc.uploaded_date,
     });
-
-    console.log('✅ Document download started:', doc.file_name);
   } catch (err) {
-    console.error('❌ DOWNLOAD INTERN DOC ERROR:', err.message);
-    return res.status(500).json({
-      message: 'Failed to download document',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
-    });
+    console.error('❌ VALIDATE INTERN DOC ERROR:', err.message);
+    res.status(500).json({ error: err.message });
   }
 }
 
@@ -520,6 +505,6 @@ module.exports = {
   uploadInternDoc,
   getInternDocuments,
   deleteInternDoc,
-  viewInternDoc,
   downloadInternDoc,
+  validateInternDoc,
 };

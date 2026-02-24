@@ -7,7 +7,8 @@ const { Op } = require('sequelize');
 // Get available years/sections for a program
 exports.getAvailableYears = async (programId) => {
   try {
-    const years = await sequelize.query(
+    // Query both interns and advisers to get all year_sections for this program
+    const yearsFromInterns = await sequelize.query(
       `SELECT DISTINCT year_section FROM interns 
        WHERE REPLACE(LOWER(program), ' ', '') = ?
        ORDER BY year_section ASC`,
@@ -17,7 +18,30 @@ exports.getAvailableYears = async (programId) => {
       },
     );
 
-    return years.map((y) => y.year_section).filter(Boolean);
+    const yearsFromAdvisers = await sequelize.query(
+      `SELECT DISTINCT yearSection as year_section FROM users 
+       WHERE role = 'Adviser'
+       AND REPLACE(LOWER(program), ' ', '') = ?
+       AND yearSection IS NOT NULL
+       ORDER BY yearSection ASC`,
+      {
+        replacements: [programId.replace(/\s/g, '').toLowerCase()],
+        type: sequelize.QueryTypes.SELECT,
+      },
+    );
+
+    // Combine results and remove duplicates
+    const allYears = [
+      ...yearsFromInterns.map((y) => y.year_section).filter(Boolean),
+      ...yearsFromAdvisers.map((y) => y.year_section).filter(Boolean),
+    ];
+
+    // Remove duplicates while preserving order
+    const uniqueYears = [...new Map(allYears.map((y) => [y.toLowerCase(), y])).values()];
+
+    console.log('[getAvailableYears] Year/sections for program', programId, ':', uniqueYears);
+
+    return uniqueYears;
   } catch (error) {
     console.error('❌ GET AVAILABLE YEARS ERROR:', error.message);
     throw error;

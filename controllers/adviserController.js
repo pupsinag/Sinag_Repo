@@ -2,8 +2,6 @@
 exports.getMatchingInterns = async (req, res) => {
   try {
     const { program, yearSection } = req.user;
-    const adviserId = req.user.id; // ✅ ADD ADVISER ID
-    console.log('--- [getMatchingInterns] Adviser ID:', adviserId);
     console.log('--- [getMatchingInterns] Adviser program:', program);
     console.log('--- [getMatchingInterns] Adviser yearSection:', yearSection);
     if (!program) {
@@ -11,15 +9,17 @@ exports.getMatchingInterns = async (req, res) => {
       return res.status(400).json({ message: 'Program missing from user profile.' });
     }
 
-    // ✅ FILTER BY adviser_id, program, AND year_section
-    const whereCondition = { 
-      program,
-      adviser_id: adviserId // ✅ CRITICAL: Only show interns assigned to this adviser
-    };
+    const { Op, fn, col, where } = require('sequelize');
+    const whereCondition = { program };
 
-    // ✅ If adviser has a yearSection, MUST filter by it - critical for program with multiple year/sections
+    // If adviser has a yearSection, filter by it; otherwise, return all interns in their program
     if (yearSection) {
-      whereCondition.year_section = yearSection;
+      whereCondition[Op.and] = [
+        where(
+          fn('REPLACE', fn('LOWER', col('year_section')), ' ', ''),
+          fn('REPLACE', fn('LOWER', yearSection), ' ', ''),
+        ),
+      ];
       console.log('--- [getMatchingInterns] Filtering by yearSection:', yearSection);
     } else {
       console.log('--- [getMatchingInterns] No yearSection - returning all interns for program');
@@ -35,38 +35,23 @@ exports.getMatchingInterns = async (req, res) => {
       ],
     });
     
-    // ✅ Transform the response to include document map at top level for easier access
+    // Transform InternDocuments array into object structure for frontend
     const transformedInterns = interns.map((intern) => {
-      const internObj = intern.toJSON();
+      const internData = intern.toJSON ? intern.toJSON() : intern;
       
-      // Build a document map keyed by document_type for easy lookup
-      const documentsMap = {};
-      if (internObj.InternDocuments && Array.isArray(internObj.InternDocuments)) {
-        internObj.InternDocuments.forEach((doc) => {
-          documentsMap[doc.document_type] = {
-            id: doc.id,
-            file_name: doc.file_name,
-            file_path: doc.file_path,
-            uploaded_date: doc.uploaded_date,
-            status: doc.status,
-            remarks: doc.remarks,
-          };
+      // Aggregate all documents into a single object with document_type as key
+      const aggregatedDocs = {};
+      if (Array.isArray(internData.InternDocuments)) {
+        internData.InternDocuments.forEach((doc) => {
+          const docType = (doc.document_type || '').toLowerCase();
+          aggregatedDocs[docType] = doc.file_path || null;
         });
       }
       
-      // Add the documents map at top level so frontend can easily access:
-      // intern.consent_form, intern.resume, etc. via documentsMap
+      // Return as array with single element (matching frontend expectation: InternDocuments[0])
       return {
-        ...internObj,
-        _documentsMap: documentsMap, // Internal map for frontend reference
-        // Also add direct properties for backward compatibility
-        consent_form: documentsMap['consent_form']?.file_path || null,
-        notarized_agreement: documentsMap['notarized_agreement']?.file_path || null,
-        portfolio: documentsMap['portfolio']?.file_path || null,
-        resume: documentsMap['resume']?.file_path || null,
-        cor: documentsMap['cor']?.file_path || null,
-        insurance: documentsMap['insurance']?.file_path || null,
-        medical_cert: documentsMap['medical_cert']?.file_path || null,
+        ...internData,
+        InternDocuments: [aggregatedDocs], // Wrap in array for frontend
       };
     });
     
@@ -79,7 +64,7 @@ exports.getMatchingInterns = async (req, res) => {
         user_program: intern.User?.program,
         user_firstName: intern.User?.firstName,
         user_lastName: intern.User?.lastName,
-        documents: Object.keys(intern._documentsMap || {}),
+        internDocuments: intern.InternDocuments,
       });
     });
     return res.json(transformedInterns);

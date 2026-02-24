@@ -289,13 +289,13 @@ exports.getAdvisers = async (req, res, next) => {
         'mi',
         'email',
         'program',
-        'yearSection', // <-- already included
+        'yearSection',
         [
           literal(`(
             SELECT COUNT(*)
-            FROM users AS u
-            WHERE u.role = 'Intern'
-            AND u.program = User.program
+            FROM interns AS i
+            WHERE i.program = User.program
+            AND LOWER(REPLACE(i.year_section, ' ', '')) = LOWER(REPLACE(User.yearSection, ' ', ''))
           )`),
           'interns',
         ],
@@ -310,8 +310,9 @@ exports.getAdvisers = async (req, res, next) => {
         yearSection: a.yearSection,
         program: a.program,
         email: a.email,
+        interns: a.interns,
       })),
-    ); // <-- Add this log
+    );
 
     res.json(advisers);
   } catch (err) {
