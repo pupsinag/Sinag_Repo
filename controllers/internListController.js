@@ -23,14 +23,20 @@ exports.generateInternList = async (req, res) => {
     ============================== */
     const interns = await Intern.findAll({
       where: whereClause,
-      include: [{ model: User, as: 'User', required: false }],
+      include: [
+        { model: User, as: 'User', required: false },
+        { model: User, as: 'Adviser', required: false }, // ✅ Include adviser's info
+      ],
       order: [[{ model: User, as: 'User' }, 'lastName', 'ASC']],
     });
 
-    const adviser = await User.findOne({
+    // ✅ Get the program's adviser for the header (if no individual adviser assigned)
+    const programAdviser = await User.findOne({
       where: { role: 'adviser', program },
     });
-    const adviserName = adviser ? `${adviser.firstName || ''} ${adviser.lastName || ''}`.trim().toUpperCase() : 'N/A';
+    const programAdviserName = programAdviser 
+      ? `${programAdviser.firstName || ''} ${programAdviser.lastName || ''}`.trim().toUpperCase() 
+      : 'N/A';
 
     /* =============================
        PDF HEADERS
@@ -101,7 +107,7 @@ exports.generateInternList = async (req, res) => {
 
     doc.moveDown(0.2);
 
-    doc.fontSize(9).font('Helvetica').text(`ADVISER: ${adviserName}`, {
+    doc.fontSize(9).font('Helvetica').text(`ADVISER: ${programAdviserName}`, {
       width: pageWidth,
       align: 'center',
     });
@@ -135,7 +141,7 @@ exports.generateInternList = async (req, res) => {
     doc.text('STUDENT ID', startX + 45, tableTop + 6);
     doc.text('NAME', startX + 145, tableTop + 6);
     doc.text('EMAIL', startX + 295, tableTop + 6);
-    doc.text('GUARDIAN', startX + 425, tableTop + 6);
+    doc.text('ADVISER', startX + 425, tableTop + 6);
 
     /* =============================
        TABLE ROWS
@@ -145,6 +151,10 @@ exports.generateInternList = async (req, res) => {
 
     interns.forEach((intern, index) => {
       const u = intern.User || {};
+      const adviserUser = intern.Adviser || {}; // ✅ Get adviser for this intern
+      const adviserName = adviserUser.lastName 
+        ? `${adviserUser.lastName}, ${adviserUser.firstName || ''}`.toUpperCase()
+        : 'N/A';
       const fullName = `${u.lastName || ''}, ${u.firstName || ''} ${u.mi || ''}`.trim().toUpperCase();
       doc.rect(startX, currentY, 515, 18).stroke('#CCCCCC');
       doc.fontSize(7);
@@ -152,7 +162,7 @@ exports.generateInternList = async (req, res) => {
       doc.text(u.studentId || 'N/A', startX + 45, currentY + 5);
       doc.text(fullName !== ',' ? fullName : 'N/A', startX + 145, currentY + 5);
       doc.text(u.email || 'N/A', startX + 295, currentY + 5);
-      doc.text(u.guardian || 'N/A', startX + 425, currentY + 5);
+      doc.text(adviserName, startX + 425, currentY + 5); // ✅ Show individual adviser
       currentY += 18;
       if (currentY > 720) {
         doc.addPage();
