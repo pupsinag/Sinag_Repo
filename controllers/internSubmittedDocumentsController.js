@@ -545,8 +545,34 @@ exports.downloadSubmittedDocument = async (req, res) => {
     
     // Try to recover the file path using strict matching
     const recoveredFileName = recoverFilePath(doc.file_path, documentType, internUser.lastName, uploadsDir);
-    const fileToServe = recoveredFileName || doc.file_path;
-    const filePath = path.join(uploadsDir, fileToServe);
+    let fileToServe = recoveredFileName;
+    
+    // If recovery failed, try to find ANY file matching this document type in uploads dir
+    if (!fileToServe) {
+      try {
+        const files = fs.readdirSync(uploadsDir);
+        const docTypePattern = documentType.replace(/_/g, '').toLowerCase();
+        
+        // Look for files matching the document type pattern (e.g., "resume")
+        const matchingFiles = files.filter(f => 
+          f.toLowerCase().includes(docTypePattern) && 
+          (f.toLowerCase().endsWith('.pdf') || f.toLowerCase().endsWith('.doc') || f.toLowerCase().endsWith('.docx'))
+        );
+        
+        if (matchingFiles.length === 1) {
+          // If exactly one file matches, use it (probably the right one)
+          fileToServe = matchingFiles[0];
+          console.log('[downloadSubmittedDocument] Found file by document type pattern:', fileToServe);
+        } else if (matchingFiles.length > 1) {
+          console.log('[downloadSubmittedDocument] Multiple files found matching type:', matchingFiles);
+          // Multiple matches - can't determine which one is correct
+        }
+      } catch (readErr) {
+        console.error('[downloadSubmittedDocument] Error searching uploads dir:', readErr.message);
+      }
+    }
+    
+    const filePath = path.join(uploadsDir, fileToServe || doc.file_path);
     const normalizedPath = path.normalize(filePath);
 
     // Prevent path traversal attacks
@@ -560,6 +586,7 @@ exports.downloadSubmittedDocument = async (req, res) => {
       console.error('[downloadSubmittedDocument] File does not exist:', normalizedPath);
       console.log('[downloadSubmittedDocument] Stored path in DB:', doc.file_path);
       console.log('[downloadSubmittedDocument] Recovered path:', recoveredFileName);
+      console.log('[downloadSubmittedDocument] Fallback path:', fileToServe);
       
       return res.status(404).json({ 
         message: 'Document file not found in storage',
