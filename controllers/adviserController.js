@@ -1,3 +1,10 @@
+/* eslint-env node */
+const { Intern, User, Company, Supervisor, InternDocuments } = require('../models');
+const { Op, fn, col, where } = require('sequelize');
+const fs = require('fs');
+const path = require('path');
+const { recoverFilePath } = require('../utils/fileRecovery');
+
 // ADVISER – GET INTERNS MATCHING PROGRAM AND YEARSECTION
 exports.getMatchingInterns = async (req, res) => {
   try {
@@ -9,7 +16,6 @@ exports.getMatchingInterns = async (req, res) => {
       return res.status(400).json({ message: 'Program missing from user profile.' });
     }
 
-    const { Op, fn, col, where } = require('sequelize');
     const whereCondition = { program };
 
     // If adviser has a yearSection, filter by it; otherwise, return all interns in their program
@@ -25,27 +31,56 @@ exports.getMatchingInterns = async (req, res) => {
       console.log('--- [getMatchingInterns] No yearSection - returning all interns for program');
     }
 
-    const interns = await require('../models').Intern.findAll({
+    const interns = await Intern.findAll({
       where: whereCondition,
       include: [
-        { model: require('../models').User, as: 'User' },
-        { model: require('../models').Company, as: 'company' },
-        { model: require('../models').InternDocuments, as: 'InternDocuments' },
-        { model: require('../models').Supervisor, as: 'Supervisor' },
+        { model: User, as: 'User', required: false },
+        { model: Company, as: 'company', required: false },
+        { model: InternDocuments, as: 'InternDocuments', required: false },
+        { model: Supervisor, as: 'Supervisor', required: false },
       ],
+      raw: false,
     });
+    
+    console.log(`--- [getMatchingInterns] Found ${interns.length} interns`);
+    
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
     
     // Transform InternDocuments array into object structure for frontend
     const transformedInterns = interns.map((intern) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
       
+      // Log documents for debugging
+      console.log(`--- [getMatchingInterns] Intern ${internData.id}:`);
+      console.log(`    - Has User: ${!!internData.User}`);
+      console.log(`    - Has Company: ${!!internData.company}`);
+      console.log(`    - InternDocuments type: ${Array.isArray(internData.InternDocuments) ? 'array' : typeof internData.InternDocuments}`);
+      console.log(`    - InternDocuments count: ${Array.isArray(internData.InternDocuments) ? internData.InternDocuments.length : 0}`);
+      
       // Aggregate all documents into a single object with document_type as key
       const aggregatedDocs = {};
-      if (Array.isArray(internData.InternDocuments)) {
+      if (Array.isArray(internData.InternDocuments) && internData.InternDocuments.length > 0) {
         internData.InternDocuments.forEach((doc) => {
           const docType = (doc.document_type || '').toLowerCase();
-          aggregatedDocs[docType] = doc.file_path || null;
+          
+          // Try to recover missing file paths
+          let filePath = doc.file_path;
+          if (doc.file_path) {
+            const recoveredPath = recoverFilePath(doc.file_path, docType, internData.User?.lastName || 'UNKNOWN', uploadsDir);
+            if (recoveredPath) {
+              filePath = recoveredPath;
+            }
+          }
+          
+          // Return both the recovered file path AND the API download URL
+          aggregatedDocs[docType] = filePath ? {
+            file_path: filePath,
+            download_url: `/api/reports/intern-documents/download/${internData.id}/${doc.document_type}`
+          } : null;
+          console.log(`    - Document: ${docType} -> ${filePath || 'NOT FOUND'}`);
         });
+      } else {
+        console.log(`    - No documents found`);
       }
       
       // Return as array with single element (matching frontend expectation: InternDocuments[0])
@@ -55,26 +90,14 @@ exports.getMatchingInterns = async (req, res) => {
       };
     });
     
-    transformedInterns.forEach((intern) => {
-      console.log('--- [getMatchingInterns] Intern:', {
-        id: intern.id,
-        program: intern.program,
-        year_section: intern.year_section,
-        user_id: intern.user_id,
-        user_program: intern.User?.program,
-        user_firstName: intern.User?.firstName,
-        user_lastName: intern.User?.lastName,
-        internDocuments: intern.InternDocuments,
-      });
-    });
+    console.log('--- [getMatchingInterns] Returning transformed interns');
     return res.json(transformedInterns);
   } catch (err) {
     console.error('❌ Error fetching matching interns:', err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Stack:', err.stack);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
-const { Intern, User } = require('../models');
-const { Op } = require('sequelize');
 
 /* =================================================
    INTERN – GET ASSIGNED ADVISER

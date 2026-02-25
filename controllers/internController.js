@@ -75,8 +75,10 @@ exports.getMyCompany = async (req, res) => {
 exports.getInternsForAdviser = async (req, res) => {
   try {
     const userRole = req.user.role ? req.user.role.toLowerCase() : '';
+    const { program, yearSection } = req.user; // Get adviser's program and yearSection
     console.log('\n[getInternsForAdviser] ===== START =====');
     console.log('[getInternsForAdviser] User role:', userRole, 'User ID:', req.user.id);
+    console.log('[getInternsForAdviser] Adviser program:', program, 'yearSection:', yearSection);
 
     let whereCondition = {};
 
@@ -85,10 +87,19 @@ exports.getInternsForAdviser = async (req, res) => {
       console.log('[getInternsForAdviser] Mode: Coordinator/Admin - Fetching ALL interns');
       whereCondition = {};
     }
-    // 🟢 ADVISER: see only their interns
+    // 🟢 ADVISER: see only their interns matching their programme and year/section
     else if (userRole === 'adviser') {
       console.log('[getInternsForAdviser] Mode: Adviser - Fetching interns for adviser:', req.user.id);
-      whereCondition = { adviser_id: req.user.id };
+      // ✅ CRITICAL: Filter by adviser_id AND programme AND year_section
+      whereCondition = { 
+        adviser_id: req.user.id,
+        program: program  // Only interns in adviser's programme
+      };
+      // Add yearSection filter if adviser has one
+      if (yearSection) {
+        whereCondition.year_section = yearSection;
+        console.log('[getInternsForAdviser] Added yearSection filter:', yearSection);
+      }
     }
 
     console.log('[getInternsForAdviser] Where condition:', JSON.stringify(whereCondition));

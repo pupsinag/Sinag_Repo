@@ -17,6 +17,7 @@ async function uploadInternDoc(req, res) {
     console.log('[DEBUG] uploadInternDoc - req.body:', req.body);
 
     const file = req.file;
+    console.log('📤 [UPLOAD] req.file:', file ? { filename: file.filename, originalname: file.originalname, size: file.size } : 'MISSING');
 
     if (!file) {
       console.error('❌ No file provided in request');
@@ -85,6 +86,13 @@ async function uploadInternDoc(req, res) {
     /* =========================
        CREATE OR UPDATE DOC RECORD
     ========================= */
+    console.log('📝 [SAVE] Will save to DB:', {
+      intern_id: intern.id,
+      document_type: targetColumn,
+      file_name: file.originalname,
+      file_path: file.filename,
+    });
+
     const docData = {
       intern_id: intern.id,
       document_type: targetColumn,
@@ -125,23 +133,32 @@ async function uploadInternDoc(req, res) {
       });
     }
 
+    // Verify file exists on disk
+    const filePath = path.join(__dirname, '..', 'uploads', verifyDoc.file_path);
+    const fileExists = fs.existsSync(filePath);
+    console.log('📁 [FILE CHECK]', filePath, '→', fileExists ? '✅ EXISTS' : '❌ NOT FOUND');
+
+    if (!fileExists) {
+      console.error('❌ CRITICAL: File was not saved to disk!', filePath);
+      return res.status(500).json({
+        message: 'Document upload failed - file not saved to disk',
+        error: 'File system error',
+        debug: { expected_path: filePath, db_file_path: verifyDoc.file_path }
+      });
+    }
+
     console.log('✅ Document verified in database:', {
       id: verifyDoc.id,
       intern_id: verifyDoc.intern_id,
       document_type: verifyDoc.document_type,
       file_path: verifyDoc.file_path,
+      multer_filename: file.filename,
+      match: file.filename === verifyDoc.file_path ? '✅ MATCH' : '❌ MISMATCH',
     });
 
     return res.json({
       message: 'Document uploaded successfully',
-      document: {
-        id: verifyDoc.id,
-        document_type: verifyDoc.document_type,
-        file_name: verifyDoc.file_name,
-        file_path: verifyDoc.file_path,
-        uploaded_date: verifyDoc.uploaded_date,
-        status: verifyDoc.status,
-      }
+      file: verifyDoc.file_path,
     });
   } catch (err) {
     console.error('❌ UPLOAD INTERN DOC ERROR:', err.message);
@@ -192,22 +209,14 @@ async function getInternDocuments(req, res) {
     });
 
     // Transform array to object keyed by document_type for easier frontend use
-    const docsObject = {};
+    const docsObject = {
+      MOA: intern.company?.moaFile || null,
+    };
     docsList.forEach(doc => {
-      docsObject[doc.document_type] = {
-        id: doc.id,
-        file_name: doc.file_name,
-        file_path: doc.file_path,
-        uploaded_date: doc.uploaded_date,
-        status: doc.status,
-        remarks: doc.remarks,
-      };
+      docsObject[doc.document_type] = doc.file_path;
     });
 
-    return res.json({
-      documents: docsObject,
-      MOA: intern.company?.moaFile || null,
-    });
+    return res.json(docsObject);
   } catch (err) {
     console.error('❌ GET INTERN DOCS ERROR:', err.message);
     console.error('Stack trace:', err.stack);
@@ -246,21 +255,29 @@ async function deleteInternDoc(req, res) {
       return res.status(404).json({ message: 'Intern not found' });
     }
 
-    const docs = await InternDocuments.findOne({
-      where: { intern_id: intern.id },
+    const doc = await InternDocuments.findOne({
+      where: { intern_id: intern.id, document_type: column },
     });
 
-    if (!docs || !docs[column]) {
+    if (!doc) {
       return res.status(404).json({ message: 'Document not found' });
     }
 
-    const filePath = path.join(__dirname, '..', 'uploads', docs[column]);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // Delete the file from disk
+    if (doc.file_path) {
+      const filePath = path.join(__dirname, '..', 'uploads', doc.file_path);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          console.log('✅ Deleted file:', doc.file_path);
+        } catch (err) {
+          console.warn('⚠️ Failed to delete file from disk:', err.message);
+        }
+      }
     }
 
-    docs[column] = null;
-    await docs.save();
+    // Delete the database record
+    await doc.destroy();
 
     return res.json({ message: 'Document deleted successfully' });
   } catch (err) {

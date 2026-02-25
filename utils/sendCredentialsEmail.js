@@ -9,7 +9,7 @@ const transporter = nodemailer.createTransport({
 });
 
 const sendCredentialsEmail = async ({ email, password, role }) => {
-  const loginUrl = 'http://wwww.pupsinag.com'; 
+  const loginUrl = 'http://www.pupsinag.com'; 
 
   await transporter.sendMail({
     from: process.env.EMAIL_USER,

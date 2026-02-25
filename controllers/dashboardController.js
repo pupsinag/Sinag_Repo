@@ -224,33 +224,32 @@ exports.getKpis = async (req, res, next) => {
       // No WHERE condition - count all interns
       internWhere = {};
     }
-    // 🟢 ADVISER: see only their program's interns
+    // 🟢 ADVISER: see only their program's interns (and year_section if applicable)
     else if (userRole === 'adviser' && req.user.program) {
-      if (/MAJOR/i.test(req.user.program)) {
-        internWhere = {
-          [Op.and]: [
-            literal(`
-              REPLACE(REPLACE(UPPER(program), ' ', ''), '-', '') = '${normalizeProgramFull(req.user.program)}'
-            `),
-          ],
-        };
-      } else {
-        internWhere = {
-          [Op.and]: [
-            literal(`
-              REPLACE(REPLACE(
-                UPPER(
-                  CASE
-                    WHEN LOCATE('MAJOR', program) > 0
-                    THEN SUBSTRING(program, 1, LOCATE('MAJOR', program) - 1)
-                    ELSE program
-                  END
-                ), ' ', ''), '-', ''
-              ) = '${normalizeProgramBase(req.user.program)}'
-            `),
-          ],
-        };
+      // ✅ CRITICAL: Filter by both programme AND year_section for advisers
+      const adviserYearSection = req.user.yearSection || req.user.year_section;
+      const baseFilter = /MAJOR/i.test(req.user.program)
+        ? `REPLACE(REPLACE(UPPER(program), ' ', ''), '-', '') = '${normalizeProgramFull(req.user.program)}'`
+        : `REPLACE(REPLACE(
+            UPPER(
+              CASE
+                WHEN LOCATE('MAJOR', program) > 0
+                THEN SUBSTRING(program, 1, LOCATE('MAJOR', program) - 1)
+                ELSE program
+              END
+            ), ' ', ''), '-', ''
+          ) = '${normalizeProgramBase(req.user.program)}'`;
+      
+      const conditions = [baseFilter];
+      
+      // Add year_section filter if adviser has one
+      if (adviserYearSection) {
+        conditions.push(`REPLACE(LOWER(year_section), ' ', '') = REPLACE(LOWER('${adviserYearSection}'), ' ', '')`);
       }
+      
+      internWhere = {
+        [Op.and]: [literal(conditions.join(' AND '))],
+      };
     } else if (selectedProgram) {
       // If selectedProgram is an acronym, map to full base name and use LIKE
       const acronym = selectedProgram.toUpperCase();
@@ -324,6 +323,9 @@ exports.getAdviserKpis = async (req, res, next) => {
     }
 
     let internWhere = {};
+    const adviserYearSection = req.user.yearSection || req.user.year_section;
+    
+    // ✅ CRITICAL: Filter by both programme AND year_section if adviser has one
     if (/MAJOR/i.test(req.user.program)) {
       internWhere = {
         [Op.and]: [
@@ -348,6 +350,17 @@ exports.getAdviserKpis = async (req, res, next) => {
           `),
         ],
       };
+    }
+
+    // Add year_section filter if adviser has one
+    if (adviserYearSection) {
+      const baseCondition = internWhere[Op.and][0];
+      internWhere[Op.and] = [
+        literal(`${baseCondition} AND REPLACE(LOWER(year_section), ' ', '') = REPLACE(LOWER('${adviserYearSection}'), ' ', '')`)
+      ];
+      console.log('[getAdviserKpis] Filtering by program:', req.user.program, 'and year_section:', adviserYearSection);
+    } else {
+      console.log('[getAdviserKpis] Filtering by program:', req.user.program, 'only (no year_section)');
     }
 
     const activeInterns = await Intern.count({ where: internWhere });

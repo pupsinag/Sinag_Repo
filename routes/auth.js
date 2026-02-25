@@ -72,7 +72,8 @@ router.put('/interns/:id/status', authMiddleware(['adviser', 'coordinator']), au
 
 router.put('/interns/:id/assign-hte', authMiddleware(['adviser', 'coordinator']), authController.assignHTE);
 
-router.delete('/interns/:id', authMiddleware(['coordinator']), authController.deleteIntern);
+// ✅ Allow advisers AND coordinators to delete interns (with proper filtering in controller)
+router.delete('/interns/:id', authMiddleware(['adviser', 'coordinator']), authController.deleteIntern);
 
 /* =========================
    CONSENT DATA
@@ -116,6 +117,9 @@ router.post(
 
 // INTERN – view own checklist
 router.get('/intern-docs/me', authMiddleware(['intern']), internDocsController.getInternDocuments);
+
+// INTERN – download / view document
+router.get('/intern-docs/download/:docId', authMiddleware(['intern']), internDocsController.downloadInternDoc);
 
 // INTERN – delete document
 router.delete('/intern-docs/:column', authMiddleware(['intern']), internDocsController.deleteInternDoc);

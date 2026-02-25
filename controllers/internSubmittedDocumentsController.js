@@ -2,6 +2,7 @@ const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
 const { Intern, InternDocuments, User, Company } = require('../models');
+const { recoverFilePath } = require('../utils/fileRecovery');
 
 exports.generateInternSubmittedDocuments = async (req, res) => {
   console.log('\n\n========== generateInternSubmittedDocuments STARTED ==========');
@@ -25,9 +26,13 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       return res.status(400).json({ message: 'Program is required' });
     }
 
-    // Fetch adviser name for the program
+    // Fetch adviser name for the program and year_section
+    let adviserWhere = { role: 'adviser', program };
+    if (year_section) {
+      adviserWhere.yearSection = year_section;
+    }
     const adviser = await User.findOne({
-      where: { role: 'adviser', program },
+      where: adviserWhere,
     });
     const adviserName = adviser ? `${adviser.firstName || ''} ${adviser.lastName || ''}`.trim().toUpperCase() : 'N/A';
     console.log('[generateInternSubmittedDocuments] Adviser name:', adviserName);
@@ -286,5 +291,322 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
         error: err.message
       });
     }
+  }
+};
+
+/* =========================
+   GET INTERNS SUBMITTED DOCUMENTS (JSON)
+   For adviser/coordinator to view submitted documents as a table
+========================= */
+exports.getInternSubmittedDocuments = async (req, res) => {
+  console.log('\n\n========== getInternSubmittedDocuments STARTED ==========');
+  console.log('Request body:', JSON.stringify(req.body));
+  console.log('Request user:', req.user ? { id: req.user.id, role: req.user.role } : 'NO USER');
+  
+  try {
+    const { program, year_section } = req.body;
+    console.log('[getInternSubmittedDocuments] program=', program, ', year_section=', year_section);
+    
+    if (!program) {
+      console.error('[getInternSubmittedDocuments] ❌ Program is required');
+      return res.status(400).json({ message: 'Program is required' });
+    }
+
+    // Fetch adviser name for the program and year_section
+    let adviserWhere = { role: 'adviser', program };
+    if (year_section) {
+      adviserWhere.yearSection = year_section;
+    }
+    const adviser = await User.findOne({
+      where: adviserWhere,
+    });
+    const adviserName = adviser ? `${adviser.firstName || ''} ${adviser.lastName || ''}`.trim().toUpperCase() : 'N/A';
+    console.log('[getInternSubmittedDocuments] Adviser name:', adviserName);
+
+    let whereClause = {
+      program,
+    };
+    
+    console.log('[getInternSubmittedDocuments] Fetching interns with where clause:', JSON.stringify(whereClause));
+    
+    let interns = [];
+    
+    // Step 1: Get base intern data
+    const baseInterns = await Intern.findAll({
+      where: whereClause,
+      raw: true,
+    });
+    console.log(`[getInternSubmittedDocuments] Step 1: Found ${baseInterns.length} base interns`);
+
+    // Filter by year_section in JavaScript if provided
+    let filteredInterns = baseInterns;
+    if (year_section) {
+      const normalizedYearSection = year_section.replace(/\s/g, '').toLowerCase();
+      filteredInterns = baseInterns.filter(intern => 
+        intern.year_section && 
+        intern.year_section.replace(/\s/g, '').toLowerCase() === normalizedYearSection
+      );
+      console.log(`[getInternSubmittedDocuments] Filtered to ${filteredInterns.length} interns for year_section: ${year_section}`);
+    }
+
+    if (filteredInterns.length > 0) {
+      // Step 2: Get user data
+      const userIds = [...new Set(filteredInterns.map(i => i.user_id).filter(Boolean))];
+      const users = await User.findAll({
+        where: { id: userIds },
+        raw: true,
+      });
+      const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+      console.log(`[getInternSubmittedDocuments] Step 2: Fetched ${users.length} users`);
+
+      // Step 3: Get InternDocuments data
+      const internIds = filteredInterns.map(i => i.id);
+      const allDocs = await InternDocuments.findAll({
+        where: { intern_id: internIds },
+        raw: true,
+      });
+      // Build map to accumulate ALL documents for each intern
+      const docsMap = allDocs.reduce((acc, d) => {
+        if (!acc[d.intern_id]) {
+          acc[d.intern_id] = [];
+        }
+        acc[d.intern_id].push(d);
+        return acc;
+      }, {});
+      console.log(`[getInternSubmittedDocuments] Step 3: Fetched ${allDocs.length} documents`);
+
+      // Step 4: Get Company data
+      const companyIds = [...new Set(filteredInterns.map(i => i.company_id).filter(Boolean))];
+      const companies = await Company.findAll({
+        where: { id: companyIds },
+        raw: true,
+      });
+      const companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
+      console.log(`[getInternSubmittedDocuments] Step 4: Fetched ${companies.length} companies`);
+
+      // Enrich interns with related data
+      interns = filteredInterns.map(intern => ({
+        ...intern,
+        User: userMap[intern.user_id] || {},
+        InternDocuments: docsMap[intern.id] || [],
+        company: companyMap[intern.company_id] || {},
+      }));
+    }
+    
+    console.log(`[getInternSubmittedDocuments] Total enriched interns: ${interns.length}`);
+
+    // Sort by last name
+    interns.sort((a, b) => {
+      const nameA = (a.User?.lastName || '').toLowerCase();
+      const nameB = (b.User?.lastName || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+    console.log('[getInternSubmittedDocuments] Interns sorted by last name');
+
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+
+    // Map interns to include document information
+    const internsData = interns.map((intern, index) => {
+      const docsArray = intern.InternDocuments || [];
+      const user = intern.User;
+      const company = intern.company;
+
+      // Build a map of document types for this intern
+      const docMap = {};
+      docsArray.forEach(doc => {
+        if (doc.document_type) {
+          // Apply file recovery mechanism to get correct file path
+          let filePath = doc.file_path;
+          if (doc.file_path) {
+            const recoveredPath = recoverFilePath(doc.file_path, doc.document_type, user?.lastName || 'UNKNOWN', uploadsDir);
+            if (recoveredPath) {
+              filePath = recoveredPath;
+            }
+          }
+          
+          docMap[doc.document_type.toLowerCase()] = {
+            file_path: filePath,
+            file_name: doc.file_name,
+            document_type: doc.document_type,
+            download_url: `/api/reports/intern-documents/download/${intern.id}/${doc.document_type}`,
+            id: doc.id,
+          };
+        }
+      });
+
+      return {
+        id: intern.id,
+        user_id: intern.user_id,
+        firstName: user?.firstName || 'N/A',
+        lastName: user?.lastName || 'N/A',
+        fullName: `${user?.lastName || 'N/A'}, ${user?.firstName || 'N/A'}`,
+        email: user?.email,
+        program: intern.program,
+        year_section: intern.year_section,
+        company_name: company?.companyName || 'N/A',
+        documents: {
+          notarized_agreement: docMap['notarized_agreement'] || null,
+          medical_cert: docMap['medical_cert'] || null,
+          insurance: docMap['insurance'] || null,
+          moa: company?.moaFile ? { file_path: company.moaFile, download_url: null } : null,
+          cor: docMap['cor'] || null,
+          consent_form: docMap['consent_form'] || null,
+          resume: docMap['resume'] || null,
+        },
+      };
+    });
+
+    res.status(200).json({
+      message: 'Interns submitted documents retrieved successfully',
+      count: internsData.length,
+      program,
+      year_section: year_section || 'All',
+      adviser: adviserName,
+      data: internsData,
+    });
+  } catch (err) {
+    console.error('\n❌ GET INTERN DOCUMENTS ERROR');
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    console.error('===== END ERROR =====\n');
+    res.status(500).json({ 
+      message: 'Failed to retrieve intern submitted documents',
+      error: err.message
+    });
+  }
+};
+
+/* =========================
+   DOWNLOAD INDIVIDUAL SUBMITTED DOCUMENT
+========================= */
+exports.downloadSubmittedDocument = async (req, res) => {
+  console.log('\n\n🔍 [downloadSubmittedDocument] ========== DOWNLOAD REQUEST ==========');
+  
+  try {
+    const { internId, documentType } = req.params;
+    const user = req.user;
+    
+    console.log('[downloadSubmittedDocument] User:', { id: user.id, role: user.role });
+    console.log('[downloadSubmittedDocument] Requested:', { internId, documentType });
+
+    // Only advisers and coordinators can download submitted documents
+    if (!['adviser', 'coordinator', 'admin'].includes(user.role)) {
+      console.error('[downloadSubmittedDocument] User role not allowed:', user.role);
+      return res.status(403).json({ message: 'You do not have permission to download this document' });
+    }
+
+    // Find the intern
+    const intern = await Intern.findByPk(internId, { raw: true });
+    if (!intern) {
+      console.error('[downloadSubmittedDocument] Intern not found:', internId);
+      return res.status(404).json({ message: 'Intern not found' });
+    }
+
+    // If adviser, check if they manage this intern's program
+    if (user.role === 'adviser') {
+      const adviserInternsCount = await Intern.count({
+        where: {
+          id: internId,
+          program: user.program,
+        },
+      });
+
+      if (adviserInternsCount === 0) {
+        console.log('[downloadSubmittedDocument] Adviser not authorized for intern', {
+          internId,
+          adviserProgram: user.program,
+          internProgram: intern.program,
+        });
+        return res.status(403).json({
+          message: 'You are not authorized to download documents for this intern',
+        });
+      }
+    }
+
+    // Find the document
+    const doc = await InternDocuments.findOne({
+      where: { intern_id: internId, document_type: documentType },
+      raw: true,
+    });
+
+    if (!doc || !doc.file_path) {
+      console.error('[downloadSubmittedDocument] Document not found:', { internId, documentType });
+      return res.status(404).json({ message: 'Document not found' });
+    }
+
+    // Get user for strict file recovery
+    const internUser = await User.findByPk(intern.user_id, { raw: true });
+    if (!internUser) {
+      console.error('[downloadSubmittedDocument] User not found:', intern.user_id);
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    
+    // Try to recover the file path using strict matching
+    const recoveredFileName = recoverFilePath(doc.file_path, documentType, internUser.lastName, uploadsDir);
+    let fileToServe = recoveredFileName;
+    
+    // If recovery failed, try to find ANY file matching this document type in uploads dir
+    if (!fileToServe) {
+      try {
+        const files = fs.readdirSync(uploadsDir);
+        const docTypePattern = documentType.replace(/_/g, '').toLowerCase();
+        
+        // Look for files matching the document type pattern (e.g., "resume")
+        const matchingFiles = files.filter(f => 
+          f.toLowerCase().includes(docTypePattern) && 
+          (f.toLowerCase().endsWith('.pdf') || f.toLowerCase().endsWith('.doc') || f.toLowerCase().endsWith('.docx'))
+        );
+        
+        if (matchingFiles.length === 1) {
+          // If exactly one file matches, use it (probably the right one)
+          fileToServe = matchingFiles[0];
+          console.log('[downloadSubmittedDocument] Found file by document type pattern:', fileToServe);
+        } else if (matchingFiles.length > 1) {
+          console.log('[downloadSubmittedDocument] Multiple files found matching type:', matchingFiles);
+          // Multiple matches - can't determine which one is correct
+        }
+      } catch (readErr) {
+        console.error('[downloadSubmittedDocument] Error searching uploads dir:', readErr.message);
+      }
+    }
+    
+    const filePath = path.join(uploadsDir, fileToServe || doc.file_path);
+    const normalizedPath = path.normalize(filePath);
+
+    // Prevent path traversal attacks
+    if (!normalizedPath.startsWith(uploadsDir)) {
+      console.error('[downloadSubmittedDocument] Path traversal attempt detected:', normalizedPath);
+      return res.status(403).json({ message: 'Invalid file path' });
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(normalizedPath)) {
+      console.error('[downloadSubmittedDocument] File does not exist:', normalizedPath);
+      console.log('[downloadSubmittedDocument] Stored path in DB:', doc.file_path);
+      console.log('[downloadSubmittedDocument] Recovered path:', recoveredFileName);
+      console.log('[downloadSubmittedDocument] Fallback path:', fileToServe);
+      
+      return res.status(404).json({ 
+        message: 'Document file not found in storage',
+        details: `Expected: ${doc.file_path}`
+      });
+    }
+
+    console.log('[downloadSubmittedDocument] Serving file:', normalizedPath);
+    res.download(normalizedPath, doc.file_name || fileToServe, (err) => {
+      if (err) {
+        console.error('[downloadSubmittedDocument] Error downloading file:', err.message);
+      }
+    });
+  } catch (err) {
+    console.error('\n❌ DOWNLOAD SUBMITTED DOCUMENT ERROR');
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    res.status(500).json({ 
+      message: 'Failed to download document',
+      error: err.message
+    });
   }
 };
