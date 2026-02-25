@@ -428,6 +428,7 @@ exports.getInternSubmittedDocuments = async (req, res) => {
             file_path: filePath,
             file_name: doc.file_name,
             document_type: doc.document_type,
+            download_url: `/api/reports/intern-documents/download/${intern.id}/${doc.document_type}`,
             id: doc.id,
           };
         }
@@ -447,7 +448,7 @@ exports.getInternSubmittedDocuments = async (req, res) => {
           notarized_agreement: docMap['notarized_agreement'] || null,
           medical_cert: docMap['medical_cert'] || null,
           insurance: docMap['insurance'] || null,
-          moa: company?.moaFile ? { file_path: company.moaFile } : null,
+          moa: company?.moaFile ? { file_path: company.moaFile, download_url: null } : null,
           cor: docMap['cor'] || null,
           consent_form: docMap['consent_form'] || null,
           resume: docMap['resume'] || null,
