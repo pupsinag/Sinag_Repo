@@ -2,6 +2,7 @@ const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
 const { Intern, InternDocuments, User, Company } = require('../models');
+const { recoverFilePath } = require('../utils/fileRecovery');
 
 exports.generateInternSubmittedDocuments = async (req, res) => {
   console.log('\n\n========== generateInternSubmittedDocuments STARTED ==========');
@@ -402,6 +403,8 @@ exports.getInternSubmittedDocuments = async (req, res) => {
     });
     console.log('[getInternSubmittedDocuments] Interns sorted by last name');
 
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+
     // Map interns to include document information
     const internsData = interns.map((intern, index) => {
       const docsArray = intern.InternDocuments || [];
@@ -412,8 +415,17 @@ exports.getInternSubmittedDocuments = async (req, res) => {
       const docMap = {};
       docsArray.forEach(doc => {
         if (doc.document_type) {
+          // Apply file recovery mechanism to get correct file path
+          let filePath = doc.file_path;
+          if (doc.file_path) {
+            const recoveredPath = recoverFilePath(doc.file_path, doc.document_type, user?.lastName || 'UNKNOWN', uploadsDir);
+            if (recoveredPath) {
+              filePath = recoveredPath;
+            }
+          }
+          
           docMap[doc.document_type.toLowerCase()] = {
-            file_path: doc.file_path,
+            file_path: filePath,
             file_name: doc.file_name,
             document_type: doc.document_type,
             id: doc.id,
@@ -521,11 +533,22 @@ exports.downloadSubmittedDocument = async (req, res) => {
       return res.status(404).json({ message: 'Document not found' });
     }
 
-    const filePath = path.join(__dirname, '..', 'uploads', doc.file_path);
+    // Get user for strict file recovery
+    const user = await User.findByPk(intern.user_id, { raw: true });
+    if (!user) {
+      console.error('[downloadSubmittedDocument] User not found:', intern.user_id);
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    
+    // Try to recover the file path using strict matching
+    const recoveredFileName = recoverFilePath(doc.file_path, documentType, user.lastName, uploadsDir);
+    const fileToServe = recoveredFileName || doc.file_path;
+    const filePath = path.join(uploadsDir, fileToServe);
     const normalizedPath = path.normalize(filePath);
 
     // Prevent path traversal attacks
-    const uploadsDir = path.join(__dirname, '..', 'uploads');
     if (!normalizedPath.startsWith(uploadsDir)) {
       console.error('[downloadSubmittedDocument] Path traversal attempt detected:', normalizedPath);
       return res.status(403).json({ message: 'Invalid file path' });
@@ -535,53 +558,16 @@ exports.downloadSubmittedDocument = async (req, res) => {
     if (!fs.existsSync(normalizedPath)) {
       console.error('[downloadSubmittedDocument] File does not exist:', normalizedPath);
       console.log('[downloadSubmittedDocument] Stored path in DB:', doc.file_path);
+      console.log('[downloadSubmittedDocument] Recovered path:', recoveredFileName);
       
-      // Try to find the file by searching the uploads directory
-      try {
-        const files = fs.readdirSync(uploadsDir);
-        const originalFileName = path.basename(doc.file_path);
-        const matchedFile = files.find(f => 
-          f.includes(originalFileName) || f === originalFileName
-        );
-
-        if (matchedFile) {
-          console.log('[downloadSubmittedDocument] Found matching file by name pattern:', matchedFile);
-          const recoveredPath = path.join(uploadsDir, matchedFile);
-          return res.download(recoveredPath, doc.file_name || matchedFile);
-        }
-
-        // Try to find by document type pattern
-        const typePattern = documentType.replace(/_/g, '');
-        const typeMatchedFile = files.find(f => 
-          f.toLowerCase().includes(typePattern.toLowerCase())
-        );
-
-        if (typeMatchedFile) {
-          console.log('[downloadSubmittedDocument] Found file by document type pattern:', typeMatchedFile);
-          const recoveredPath = path.join(uploadsDir, typeMatchedFile);
-          return res.download(recoveredPath, doc.file_name || typeMatchedFile);
-        }
-
-        // List possible matches for debugging
-        const possibleMatches = files.filter(f => 
-          f.toLowerCase().includes('resume') || 
-          f.toLowerCase().includes('doc') ||
-          f.toLowerCase().includes('pdf')
-        );
-        console.log('[downloadSubmittedDocument] No matching file found. Possible matches:', possibleMatches.slice(0, 10));
-        
-        return res.status(404).json({ 
-          message: 'Document file not found in storage',
-          details: `Expected: ${doc.file_path}`
-        });
-      } catch (readErr) {
-        console.error('[downloadSubmittedDocument] Error searching for file:', readErr.message);
-        return res.status(500).json({ message: 'Error retrieving document' });
-      }
+      return res.status(404).json({ 
+        message: 'Document file not found in storage',
+        details: `Expected: ${doc.file_path}`
+      });
     }
 
     console.log('[downloadSubmittedDocument] Serving file:', normalizedPath);
-    res.download(normalizedPath, doc.file_name || doc.file_path, (err) => {
+    res.download(normalizedPath, doc.file_name || fileToServe, (err) => {
       if (err) {
         console.error('[downloadSubmittedDocument] Error downloading file:', err.message);
       }
