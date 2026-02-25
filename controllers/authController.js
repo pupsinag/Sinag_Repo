@@ -494,7 +494,15 @@ exports.updateIntern = async (req, res, next) => {
       });
       
       if (adviserProgram !== internProgram || adviserYearSection !== internYearSection) {
-        return res.status(403).json({ message: 'Forbidden: You can only edit interns from your program and year/section' });
+        return res.status(403).json({ 
+          message: 'Forbidden: You can only edit interns from your program and year/section',
+          debug: {
+            adviserProgram: adviserProgram || '(empty/null)',
+            adviserYearSection: adviserYearSection || '(empty/null)',
+            internProgram: internProgram || '(empty/null)',
+            internYearSection: internYearSection || '(empty/null)',
+          }
+        });
       }
     }
 
@@ -573,7 +581,15 @@ exports.deleteIntern = async (req, res, next) => {
       });
       
       if (adviserProgram !== internProgram || adviserYearSection !== internYearSection) {
-        return res.status(403).json({ message: 'Forbidden: You can only delete interns from your program and year/section' });
+        return res.status(403).json({ 
+          message: 'Forbidden: You can only delete interns from your program and year/section',
+          debug: {
+            adviserProgram: adviserProgram || '(empty/null)',
+            adviserYearSection: adviserYearSection || '(empty/null)',
+            internProgram: internProgram || '(empty/null)',
+            internYearSection: internYearSection || '(empty/null)',
+          }
+        });
       }
     }
 
