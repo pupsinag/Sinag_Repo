@@ -1,6 +1,66 @@
 /* eslint-env node */
 const { Intern, User, Company, Supervisor, InternDocuments } = require('../models');
 const { Op, fn, col, where } = require('sequelize');
+const fs = require('fs');
+const path = require('path');
+
+/* =========================
+   HELPER: Recover missing file path
+========================= */
+const recoverFilePath = (storedPath, docType, internLastName, uploadsDir) => {
+  // If the stored path exists, use it
+  const fullPath = path.join(uploadsDir, storedPath);
+  if (fs.existsSync(fullPath)) {
+    return storedPath;
+  }
+
+  console.log(`[recoverFilePath] File not found: ${storedPath}, searching for alternatives...`);
+
+  // Try to find a file matching the document type and intern last name
+  try {
+    const files = fs.readdirSync(uploadsDir);
+    
+    // Build search patterns
+    const lastNamePart = internLastName.toUpperCase().replace(/\s/g, '_');
+    const docTypePart = docType.toUpperCase().replace(/_/g, '');
+    
+    // Try exact match first
+    const exactMatch = files.find(f => 
+      f.toUpperCase() === `${lastNamePart}_${docType.toUpperCase()}.pdf` ||
+      f.toUpperCase() === `${lastNamePart}_${docTypePart}.pdf`
+    );
+    if (exactMatch) {
+      console.log(`[recoverFilePath] Found exact match: ${exactMatch}`);
+      return exactMatch;
+    }
+
+    // Try partial match
+    const partialMatch = files.find(f => 
+      f.toUpperCase().includes(lastNamePart) && 
+      f.toUpperCase().includes(docTypePart)
+    );
+    if (partialMatch) {
+      console.log(`[recoverFilePath] Found partial match: ${partialMatch}`);
+      return partialMatch;
+    }
+
+    // Try just by document type
+    const typeOnlyMatch = files.find(f => 
+      f.toUpperCase().includes(docTypePart) && 
+      f.toUpperCase().includes('.PDF')
+    );
+    if (typeOnlyMatch) {
+      console.log(`[recoverFilePath] Found type-only match: ${typeOnlyMatch}`);
+      return typeOnlyMatch;
+    }
+
+    console.log(`[recoverFilePath] No alternative file found for ${docType}`);
+    return null;
+  } catch (err) {
+    console.error(`[recoverFilePath] Error searching for alternatives:`, err.message);
+    return null;
+  }
+};
 
 // ADVISER – GET INTERNS MATCHING PROGRAM AND YEARSECTION
 exports.getMatchingInterns = async (req, res) => {
@@ -41,6 +101,8 @@ exports.getMatchingInterns = async (req, res) => {
     
     console.log(`--- [getMatchingInterns] Found ${interns.length} interns`);
     
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    
     // Transform InternDocuments array into object structure for frontend
     const transformedInterns = interns.map((intern) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
@@ -57,8 +119,18 @@ exports.getMatchingInterns = async (req, res) => {
       if (Array.isArray(internData.InternDocuments) && internData.InternDocuments.length > 0) {
         internData.InternDocuments.forEach((doc) => {
           const docType = (doc.document_type || '').toLowerCase();
-          aggregatedDocs[docType] = doc.file_path || null;
-          console.log(`    - Document: ${docType} -> ${doc.file_path}`);
+          
+          // Try to recover missing file paths
+          let filePath = doc.file_path;
+          if (doc.file_path) {
+            const recoveredPath = recoverFilePath(doc.file_path, docType, internData.User?.lastName || 'UNKNOWN', uploadsDir);
+            if (recoveredPath) {
+              filePath = recoveredPath;
+            }
+          }
+          
+          aggregatedDocs[docType] = filePath || null;
+          console.log(`    - Document: ${docType} -> ${filePath || 'NOT FOUND'}`);
         });
       } else {
         console.log(`    - No documents found`);
