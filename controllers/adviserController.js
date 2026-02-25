@@ -1,3 +1,7 @@
+/* eslint-env node */
+const { Intern, User } = require('../models');
+const { Op } = require('sequelize');
+
 // ADVISER – GET INTERNS MATCHING PROGRAM AND YEARSECTION
 exports.getMatchingInterns = async (req, res) => {
   try {
@@ -9,6 +13,7 @@ exports.getMatchingInterns = async (req, res) => {
       return res.status(400).json({ message: 'Program missing from user profile.' });
     }
 
+    const models = require('../models');
     const { Op, fn, col, where } = require('sequelize');
     const whereCondition = { program };
 
@@ -25,19 +30,25 @@ exports.getMatchingInterns = async (req, res) => {
       console.log('--- [getMatchingInterns] No yearSection - returning all interns for program');
     }
 
-    const interns = await require('../models').Intern.findAll({
+    const interns = await models.Intern.findAll({
       where: whereCondition,
       include: [
-        { model: require('../models').User, as: 'User' },
-        { model: require('../models').Company, as: 'company' },
-        { model: require('../models').InternDocuments, as: 'InternDocuments' },
-        { model: require('../models').Supervisor, as: 'Supervisor' },
+        { model: models.User, as: 'User' },
+        { model: models.Company, as: 'company' },
+        { model: models.InternDocuments, as: 'InternDocuments' },
+        { model: models.Supervisor, as: 'Supervisor' },
       ],
+      raw: false, // Important: keep as objects to use toJSON()
     });
+    
+    console.log(`--- [getMatchingInterns] Found ${interns.length} interns`);
     
     // Transform InternDocuments array into object structure for frontend
     const transformedInterns = interns.map((intern) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
+      
+      // Log documents for debugging
+      console.log(`--- [getMatchingInterns] Intern ${internData.id} has ${Array.isArray(internData.InternDocuments) ? internData.InternDocuments.length : 0} documents`);
       
       // Aggregate all documents into a single object with document_type as key
       const aggregatedDocs = {};
@@ -45,6 +56,7 @@ exports.getMatchingInterns = async (req, res) => {
         internData.InternDocuments.forEach((doc) => {
           const docType = (doc.document_type || '').toLowerCase();
           aggregatedDocs[docType] = doc.file_path || null;
+          console.log(`  - Document: ${docType} -> ${doc.file_path}`);
         });
       }
       
@@ -55,26 +67,14 @@ exports.getMatchingInterns = async (req, res) => {
       };
     });
     
-    transformedInterns.forEach((intern) => {
-      console.log('--- [getMatchingInterns] Intern:', {
-        id: intern.id,
-        program: intern.program,
-        year_section: intern.year_section,
-        user_id: intern.user_id,
-        user_program: intern.User?.program,
-        user_firstName: intern.User?.firstName,
-        user_lastName: intern.User?.lastName,
-        internDocuments: intern.InternDocuments,
-      });
-    });
+    console.log('--- [getMatchingInterns] Returning transformed interns');
     return res.json(transformedInterns);
   } catch (err) {
     console.error('❌ Error fetching matching interns:', err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Stack:', err.stack);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
-const { Intern, User } = require('../models');
-const { Op } = require('sequelize');
 
 /* =================================================
    INTERN – GET ASSIGNED ADVISER
