@@ -535,8 +535,8 @@ exports.downloadSubmittedDocument = async (req, res) => {
     }
 
     // Get user for strict file recovery
-    const user = await User.findByPk(intern.user_id, { raw: true });
-    if (!user) {
+    const internUser = await User.findByPk(intern.user_id, { raw: true });
+    if (!internUser) {
       console.error('[downloadSubmittedDocument] User not found:', intern.user_id);
       return res.status(404).json({ message: 'User not found' });
     }
@@ -544,7 +544,7 @@ exports.downloadSubmittedDocument = async (req, res) => {
     const uploadsDir = path.join(__dirname, '..', 'uploads');
     
     // Try to recover the file path using strict matching
-    const recoveredFileName = recoverFilePath(doc.file_path, documentType, user.lastName, uploadsDir);
+    const recoveredFileName = recoverFilePath(doc.file_path, documentType, internUser.lastName, uploadsDir);
     const fileToServe = recoveredFileName || doc.file_path;
     const filePath = path.join(uploadsDir, fileToServe);
     const normalizedPath = path.normalize(filePath);
