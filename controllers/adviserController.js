@@ -72,7 +72,11 @@ exports.getMatchingInterns = async (req, res) => {
             }
           }
           
-          aggregatedDocs[docType] = filePath || null;
+          // Return both the recovered file path AND the API download URL
+          aggregatedDocs[docType] = filePath ? {
+            file_path: filePath,
+            download_url: `/api/reports/intern-documents/download/${internData.id}/${doc.document_type}`
+          } : null;
           console.log(`    - Document: ${docType} -> ${filePath || 'NOT FOUND'}`);
         });
       } else {
