@@ -445,6 +445,7 @@ exports.addIntern = async (req, res, next) => {
     // 📄 CREATE INTERN RECORD (also store yearSection)
     await Intern.create({
       user_id: user.id,
+      adviser_id: adviserId, // Link to the adviser who added this intern
       program,
       year_section: adviser.yearSection, // Inherit from adviser
       status: 'Pending',

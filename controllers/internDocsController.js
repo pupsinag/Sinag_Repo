@@ -304,13 +304,14 @@ async function downloadInternDoc(req, res) {
       
       // ✅ FIXED: Normalize yearSection comparison (remove spaces, convert to lowercase)
       // This matches the logic in adviserController.getMatchingInterns()
-      let isYearSectionMatch = false;
+      let isYearSectionMatch = true; // Default to true if adviser has no yearSection filter
       if (user.yearSection && intern.year_section) {
         const normalizedAdviserYearSection = (user.yearSection || '').replace(/\s/g, '').toLowerCase();
         const normalizedInternYearSection = (intern.year_section || '').replace(/\s/g, '').toLowerCase();
         isYearSectionMatch = normalizedAdviserYearSection === normalizedInternYearSection;
       }
       
+      // Allow access if: directly assigned OR (program matches AND yearSection matches/not required)
       const isProgramAndYearMatch = isProgramMatch && isYearSectionMatch;
       
       if (!isDirectlyAssigned && !isProgramAndYearMatch) {
