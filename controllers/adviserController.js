@@ -20,41 +20,29 @@ const recoverFilePath = (storedPath, docType, internLastName, uploadsDir) => {
   try {
     const files = fs.readdirSync(uploadsDir);
     
-    // Build search patterns
+    // Build search patterns - STRICT matching to ensure we get the right intern's file
     const lastNamePart = internLastName.toUpperCase().replace(/\s/g, '_');
-    const docTypePart = docType.toUpperCase().replace(/_/g, '');
+    const docTypePart = docType.toUpperCase().replace(/_/g, '_');
     
-    // Try exact match first
-    const exactMatch = files.find(f => 
-      f.toUpperCase() === `${lastNamePart}_${docType.toUpperCase()}.pdf` ||
-      f.toUpperCase() === `${lastNamePart}_${docTypePart}.pdf`
+    console.log(`[recoverFilePath] Looking for files with lastName="${lastNamePart}" and docType="${docTypePart}"`);
+    
+    // Only look for files that have THIS SPECIFIC INTERN'S LAST NAME
+    // This prevents accidentally returning another intern's document
+    const candidateFiles = files.filter(f => 
+      f.toUpperCase().startsWith(lastNamePart) && 
+      (f.toUpperCase().includes(docType.toUpperCase()) || f.toUpperCase().includes(docTypePart))
     );
-    if (exactMatch) {
-      console.log(`[recoverFilePath] Found exact match: ${exactMatch}`);
-      return exactMatch;
+    
+    console.log(`[recoverFilePath] Found ${candidateFiles.length} matching files: ${candidateFiles.join(', ')}`);
+    
+    if (candidateFiles.length > 0) {
+      // Return the first (and should be only) matching file
+      const recovered = candidateFiles[0];
+      console.log(`[recoverFilePath] Using recovered file: ${recovered}`);
+      return recovered;
     }
 
-    // Try partial match
-    const partialMatch = files.find(f => 
-      f.toUpperCase().includes(lastNamePart) && 
-      f.toUpperCase().includes(docTypePart)
-    );
-    if (partialMatch) {
-      console.log(`[recoverFilePath] Found partial match: ${partialMatch}`);
-      return partialMatch;
-    }
-
-    // Try just by document type
-    const typeOnlyMatch = files.find(f => 
-      f.toUpperCase().includes(docTypePart) && 
-      f.toUpperCase().includes('.PDF')
-    );
-    if (typeOnlyMatch) {
-      console.log(`[recoverFilePath] Found type-only match: ${typeOnlyMatch}`);
-      return typeOnlyMatch;
-    }
-
-    console.log(`[recoverFilePath] No alternative file found for ${docType}`);
+    console.log(`[recoverFilePath] No file found starting with "${lastNamePart}" for ${docType}`);
     return null;
   } catch (err) {
     console.error(`[recoverFilePath] Error searching for alternatives:`, err.message);
