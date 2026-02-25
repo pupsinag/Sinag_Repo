@@ -1,6 +1,6 @@
 /* eslint-env node */
-const { Intern, User } = require('../models');
-const { Op } = require('sequelize');
+const { Intern, User, Company, Supervisor, InternDocuments } = require('../models');
+const { Op, fn, col, where } = require('sequelize');
 
 // ADVISER – GET INTERNS MATCHING PROGRAM AND YEARSECTION
 exports.getMatchingInterns = async (req, res) => {
@@ -13,8 +13,6 @@ exports.getMatchingInterns = async (req, res) => {
       return res.status(400).json({ message: 'Program missing from user profile.' });
     }
 
-    const models = require('../models');
-    const { Op, fn, col, where } = require('sequelize');
     const whereCondition = { program };
 
     // If adviser has a yearSection, filter by it; otherwise, return all interns in their program
@@ -30,15 +28,15 @@ exports.getMatchingInterns = async (req, res) => {
       console.log('--- [getMatchingInterns] No yearSection - returning all interns for program');
     }
 
-    const interns = await models.Intern.findAll({
+    const interns = await Intern.findAll({
       where: whereCondition,
       include: [
-        { model: models.User, as: 'User' },
-        { model: models.Company, as: 'company' },
-        { model: models.InternDocuments, as: 'InternDocuments' },
-        { model: models.Supervisor, as: 'Supervisor' },
+        { model: User, as: 'User', required: false },
+        { model: Company, as: 'company', required: false },
+        { model: InternDocuments, as: 'InternDocuments', required: false },
+        { model: Supervisor, as: 'Supervisor', required: false },
       ],
-      raw: false, // Important: keep as objects to use toJSON()
+      raw: false,
     });
     
     console.log(`--- [getMatchingInterns] Found ${interns.length} interns`);
@@ -48,16 +46,22 @@ exports.getMatchingInterns = async (req, res) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
       
       // Log documents for debugging
-      console.log(`--- [getMatchingInterns] Intern ${internData.id} has ${Array.isArray(internData.InternDocuments) ? internData.InternDocuments.length : 0} documents`);
+      console.log(`--- [getMatchingInterns] Intern ${internData.id}:`);
+      console.log(`    - Has User: ${!!internData.User}`);
+      console.log(`    - Has Company: ${!!internData.company}`);
+      console.log(`    - InternDocuments type: ${Array.isArray(internData.InternDocuments) ? 'array' : typeof internData.InternDocuments}`);
+      console.log(`    - InternDocuments count: ${Array.isArray(internData.InternDocuments) ? internData.InternDocuments.length : 0}`);
       
       // Aggregate all documents into a single object with document_type as key
       const aggregatedDocs = {};
-      if (Array.isArray(internData.InternDocuments)) {
+      if (Array.isArray(internData.InternDocuments) && internData.InternDocuments.length > 0) {
         internData.InternDocuments.forEach((doc) => {
           const docType = (doc.document_type || '').toLowerCase();
           aggregatedDocs[docType] = doc.file_path || null;
-          console.log(`  - Document: ${docType} -> ${doc.file_path}`);
+          console.log(`    - Document: ${docType} -> ${doc.file_path}`);
         });
+      } else {
+        console.log(`    - No documents found`);
       }
       
       // Return as array with single element (matching frontend expectation: InternDocuments[0])
