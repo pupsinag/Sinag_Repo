@@ -482,7 +482,7 @@ exports.updateIntern = async (req, res, next) => {
     // ✅ CRITICAL: Verify adviser access - can only edit assigned interns
     if (req.user.role === 'adviser') {
       const adviserProgram = req.user.program ? req.user.program.trim().toUpperCase() : '';
-      const adviserYearSection = req.user.year_section ? req.user.year_section.trim().toUpperCase() : '';
+      const adviserYearSection = req.user.yearSection ? req.user.yearSection.trim().toUpperCase() : '';
       const internProgram = intern.program ? intern.program.trim().toUpperCase() : '';
       const internYearSection = intern.year_section ? intern.year_section.trim().toUpperCase() : '';
       
@@ -569,7 +569,7 @@ exports.deleteIntern = async (req, res, next) => {
     // ✅ CRITICAL: Verify adviser access - can only delete assigned interns
     if (req.user.role === 'adviser') {
       const adviserProgram = req.user.program ? req.user.program.trim().toUpperCase() : '';
-      const adviserYearSection = req.user.year_section ? req.user.year_section.trim().toUpperCase() : '';
+      const adviserYearSection = req.user.yearSection ? req.user.yearSection.trim().toUpperCase() : '';
       const internProgram = intern.program ? intern.program.trim().toUpperCase() : '';
       const internYearSection = intern.year_section ? intern.year_section.trim().toUpperCase() : '';
       
