@@ -71,7 +71,12 @@ exports.getMatchingInterns = async (req, res) => {
         include: [
           { model: User, as: 'User', required: false },
           { model: Company, as: 'company', required: false },
-          { model: InternDocuments, as: 'InternDocuments', attributes: { exclude: ['file_content'] }, required: false }
+          { 
+            model: InternDocuments, 
+            as: 'InternDocuments', 
+            attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path', 'file_mime_type', 'uploaded_date', 'status', 'remarks'],
+            required: false 
+          }
         ],
       });
       console.log('[getMatchingInterns] ✅ InternDocuments include succeeded');
@@ -88,7 +93,12 @@ exports.getMatchingInterns = async (req, res) => {
         include: [
           { model: User, as: 'User', required: false },
           { model: Company, as: 'company', required: false },
-          { model: InternDocuments, as: 'InternDocuments', attributes: { exclude: ['file_content'] }, required: false },
+          { 
+            model: InternDocuments, 
+            as: 'InternDocuments', 
+            attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path', 'file_mime_type', 'uploaded_date', 'status', 'remarks'],
+            required: false 
+          },
           { model: Supervisor, as: 'Supervisor', required: false }
         ],
       });
