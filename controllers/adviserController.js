@@ -137,13 +137,10 @@ exports.getMatchingInterns = async (req, res) => {
         InternDocumentsData: internData.InternDocuments
       });
       
-      // Aggregate all documents into a single object
-      const aggregatedDocs = {};
+      // Return documents as-is instead of aggregating
       if (Array.isArray(internData.InternDocuments) && internData.InternDocuments.length > 0) {
         internData.InternDocuments.forEach((doc) => {
-          const docType = (doc.document_type || '').toLowerCase();
-          console.log(`[getMatchingInterns]   - Document: type=${docType}, file_name=${doc.file_name}, file_path=${doc.file_path}`);
-          aggregatedDocs[docType] = doc.file_path || null;
+          console.log(`[getMatchingInterns]   - Document: id=${doc.id}, type=${doc.document_type}, file_name=${doc.file_name}, file_path=${doc.file_path}`);
         });
       } else {
         console.log(`[getMatchingInterns] ⚠️  Intern ${intern.id} has NO documents`);
@@ -151,7 +148,7 @@ exports.getMatchingInterns = async (req, res) => {
       
       return {
         ...internData,
-        InternDocuments: [aggregatedDocs],
+        InternDocuments: Array.isArray(internData.InternDocuments) ? internData.InternDocuments : [],
       };
     });
 
