@@ -518,9 +518,31 @@ async function downloadInternDoc(req, res) {
       where: { intern_id: internId, document_type: documentType },
     });
 
-    if (!doc || !doc.file_path) {
-      console.error('[downloadInternDoc] Document not found:', { internId, documentType });
+    if (!doc) {
+      console.error('[downloadInternDoc] Document record not found:', { internId, documentType });
       return res.status(404).json({ message: 'Document not found' });
+    }
+
+    // ✅ NEW: First try to serve from database (persistent across redeployments)
+    if (doc.file_content && doc.file_content.length > 0) {
+      console.log('[downloadInternDoc] 📦 Serving file from DATABASE');
+      
+      const mimeType = doc.file_mime_type || 'application/octet-stream';
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
+      res.setHeader('Content-Length', doc.file_content.length);
+      
+      // Send buffer directly from database
+      res.send(doc.file_content);
+      return;
+    }
+
+    // 🔄 FALLBACK: Try filesystem if database storage not available
+    console.log('[downloadInternDoc] Database content not found, trying filesystem fallback...');
+    
+    if (!doc.file_path) {
+      console.error('[downloadInternDoc] No file content in DB and no file_path for filesystem:', { internId, documentType });
+      return res.status(404).json({ message: 'Document file not found' });
     }
 
     // Build file path - handle both absolute and relative paths
@@ -616,24 +638,7 @@ async function downloadInternDoc(req, res) {
 
     console.log('[downloadInternDoc] Serving file:', normalizedPath);
 
-    // ✅ NEW: First try to serve from database (persistent across redeployments)
-    if (doc.file_content && doc.file_content.length > 0) {
-      console.log('[downloadInternDoc] 📦 Serving file from DATABASE');
-      
-      const mimeType = doc.file_mime_type || 'application/octet-stream';
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
-      res.setHeader('Content-Length', doc.file_content.length);
-      
-      // Send buffer directly from database
-      res.send(doc.file_content);
-      return;
-    }
-
-    // 🔄 FALLBACK: Serve from filesystem if database storage not available
-    console.log('[downloadInternDoc] 💾 File not in database, serving from filesystem fallback');
-
-    // Serve the file
+    // Serve the file from filesystem
     res.download(normalizedPath, doc.file_name, (err) => {
       if (err) {
         console.error('[downloadInternDoc] Error downloading file:', err.message);
