@@ -119,17 +119,24 @@ exports.getMatchingInterns = async (req, res) => {
       });
       
       // Transform documents array into object organized by document_type
-      // Return just the file_path - frontend will prepend /uploads/ to it
-      // This works because we have a /uploads/:filename endpoint that serves from the database
+      // Frontend expects: { consent_form: { download_url: "..." }, ... }
       const documentsObject = {};
       internDocumentsArray.forEach(doc => {
         const docType = doc.document_type || 'unknown';
-        documentsObject[docType] = doc.file_path;  // Just return the filename
+        // Return object with download_url using the /uploads path
+        // Frontend has: const file = (doc) => doc?.download_url
+        documentsObject[docType] = {
+          download_url: `/uploads/${doc.file_path}`,  // Frontend expects this property
+          file_name: doc.file_name,
+          file_mime_type: doc.file_mime_type,
+          uploaded_date: doc.uploaded_date,
+          status: doc.status,
+        };
       });
       
       return {
         ...internData,
-        InternDocuments: [documentsObject],  // Frontend expects array with single object containing download URLs as strings
+        InternDocuments: [documentsObject],  // Frontend expects array with single object
       };
     });
 
