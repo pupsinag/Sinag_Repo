@@ -12,60 +12,12 @@ exports.getMatchingInterns = async (req, res) => {
       return res.status(400).json({ message: 'Program missing from user profile.' });
     }
 
-    // Step 1: Fetch interns for program - START SIMPLE
+    // Step 1: Fetch interns for program
     console.log('[getMatchingInterns] Step 1️⃣ : Querying interns for program:', program);
 
     let interns;
     try {
-      // First try: Just fetch interns without any includes
-      console.log('[getMatchingInterns] Attempt 1: Basic query without includes...');
-      interns = await Intern.findAll({
-        where: { program },
-        raw: true,
-      });
-      console.log('[getMatchingInterns] ✅ Basic query succeeded, found', interns.length, 'interns');
-    } catch (basicErr) {
-      console.error('[getMatchingInterns] ❌ Basic query failed:', basicErr.message);
-      return res.status(500).json({ 
-        message: 'Basic query failed',
-        error: process.env.NODE_ENV === 'development' ? basicErr.message : undefined
-      });
-    }
-
-    // Now try with User include
-    try {
-      console.log('[getMatchingInterns] Attempt 2: Query with User include...');
-      interns = await Intern.findAll({
-        where: { program },
-        include: [
-          { model: User, as: 'User', required: false }
-        ],
-      });
-      console.log('[getMatchingInterns] ✅ User include succeeded');
-    } catch (userErr) {
-      console.error('[getMatchingInterns] ⚠️  User include failed:', userErr.message);
-      // Continue without User include
-    }
-
-    // Now try with Company include
-    try {
-      console.log('[getMatchingInterns] Attempt 3: Query with Company include...');
-      interns = await Intern.findAll({
-        where: { program },
-        include: [
-          { model: User, as: 'User', required: false },
-          { model: Company, as: 'company', required: false }
-        ],
-      });
-      console.log('[getMatchingInterns] ✅ Company include succeeded');
-    } catch (companyErr) {
-      console.error('[getMatchingInterns] ⚠️  Company include failed:', companyErr.message);
-      // Continue without Company include
-    }
-
-    // Now try with InternDocuments include
-    try {
-      console.log('[getMatchingInterns] Attempt 4: Query with InternDocuments include...');
+      console.log('[getMatchingInterns] Attempting to fetch interns with all includes...');
       interns = await Intern.findAll({
         where: { program },
         include: [
@@ -74,41 +26,27 @@ exports.getMatchingInterns = async (req, res) => {
           { 
             model: InternDocuments, 
             as: 'InternDocuments', 
-            attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path', 'file_mime_type', 'uploaded_date', 'status', 'remarks'],
-            required: false 
-          }
-        ],
-      });
-      console.log('[getMatchingInterns] ✅ InternDocuments include succeeded');
-    } catch (docsErr) {
-      console.error('[getMatchingInterns] ⚠️  InternDocuments include failed:', docsErr.message);
-      // Continue without InternDocuments include
-    }
-
-    // Now try with Supervisor include
-    try {
-      console.log('[getMatchingInterns] Attempt 5: Query with Supervisor include...');
-      interns = await Intern.findAll({
-        where: { program },
-        include: [
-          { model: User, as: 'User', required: false },
-          { model: Company, as: 'company', required: false },
-          { 
-            model: InternDocuments, 
-            as: 'InternDocuments', 
-            attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path', 'file_mime_type', 'uploaded_date', 'status', 'remarks'],
+            attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path', 'file_mime_type', 'uploaded_date', 'status', 'remarks', 'createdAt', 'updatedAt'],
             required: false 
           },
           { model: Supervisor, as: 'Supervisor', required: false }
         ],
       });
-      console.log('[getMatchingInterns] ✅ Supervisor include succeeded');
-    } catch (supervisorErr) {
-      console.error('[getMatchingInterns] ⚠️  Supervisor include failed:', supervisorErr.message);
-      // Continue with what we have
+      console.log('[getMatchingInterns] ✅ Query succeeded, found', interns.length, 'interns');
+      
+      // Log first intern's documents for debugging
+      if (interns.length > 0) {
+        console.log('[getMatchingInterns] First intern id:', interns[0].id);
+        console.log('[getMatchingInterns] First intern InternDocuments:', interns[0].InternDocuments);
+      }
+    } catch (queryErr) {
+      console.error('[getMatchingInterns] ❌ Query failed:', queryErr.message);
+      console.error('[getMatchingInterns] ❌ Full error:', queryErr);
+      return res.status(500).json({ 
+        message: 'Failed to fetch interns',
+        error: process.env.NODE_ENV === 'development' ? queryErr.message : undefined
+      });
     }
-
-    console.log('[getMatchingInterns] Step 1️⃣ COMPLETE: Found', interns.length, 'interns');
 
     // Step 2: Filter by yearSection in JavaScript
     console.log('[getMatchingInterns] Step 2️⃣ : Filtering by yearSection');
