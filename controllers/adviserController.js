@@ -9,24 +9,10 @@ exports.getMatchingInterns = async (req, res) => {
       return res.status(400).json({ message: 'Program missing from user profile.' });
     }
 
-    const { Op, fn, col, where } = require('sequelize');
-    const whereCondition = { program };
-
-    // If adviser has a yearSection, filter by it; otherwise, return all interns in their program
-    if (yearSection) {
-      whereCondition[Op.and] = [
-        where(
-          fn('REPLACE', fn('LOWER', col('year_section')), ' ', ''),
-          fn('REPLACE', fn('LOWER', yearSection), ' ', ''),
-        ),
-      ];
-      console.log('--- [getMatchingInterns] Filtering by yearSection:', yearSection);
-    } else {
-      console.log('--- [getMatchingInterns] No yearSection - returning all interns for program');
-    }
-
+    // Simple approach: Fetch all interns for program, filter in JavaScript
+    const { Op } = require('sequelize');
     const interns = await require('../models').Intern.findAll({
-      where: whereCondition,
+      where: { program },
       include: [
         { model: require('../models').User, as: 'User' },
         { model: require('../models').Company, as: 'company' },
@@ -38,9 +24,22 @@ exports.getMatchingInterns = async (req, res) => {
         { model: require('../models').Supervisor, as: 'Supervisor' },
       ],
     });
+
+    // Filter by yearSection in JavaScript if provided (matching downloadInternDoc logic)
+    let filteredInterns = interns;
+    if (yearSection) {
+      const normalizedAdviserYearSection = (yearSection || '').replace(/\s/g, '').toLowerCase();
+      filteredInterns = interns.filter(intern => {
+        const normalizedInternYearSection = (intern.year_section || '').replace(/\s/g, '').toLowerCase();
+        return normalizedAdviserYearSection === normalizedInternYearSection;
+      });
+      console.log('--- [getMatchingInterns] Filtered from', interns.length, 'to', filteredInterns.length, 'interns');
+    } else {
+      console.log('--- [getMatchingInterns] No yearSection - returning all', interns.length, 'interns for program');
+    }
     
     // Transform InternDocuments array into object structure for frontend
-    const transformedInterns = interns.map((intern) => {
+    const transformedInterns = filteredInterns.map((intern) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
       
       // Aggregate all documents into a single object with document_type as key
