@@ -117,13 +117,26 @@ exports.getMatchingInterns = async (req, res) => {
     const transformedInterns = filteredInterns.map((intern) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
       
+      console.log(`[getMatchingInterns] Intern ${intern.id} data:`, {
+        id: intern.id,
+        user_id: intern.user_id,
+        program: intern.program,
+        year_section: intern.year_section,
+        hasInternDocuments: !!internData.InternDocuments,
+        InternDocumentsCount: Array.isArray(internData.InternDocuments) ? internData.InternDocuments.length : 0,
+        InternDocumentsData: internData.InternDocuments
+      });
+      
       // Aggregate all documents into a single object
       const aggregatedDocs = {};
-      if (Array.isArray(internData.InternDocuments)) {
+      if (Array.isArray(internData.InternDocuments) && internData.InternDocuments.length > 0) {
         internData.InternDocuments.forEach((doc) => {
           const docType = (doc.document_type || '').toLowerCase();
+          console.log(`[getMatchingInterns]   - Document: type=${docType}, file_name=${doc.file_name}, file_path=${doc.file_path}`);
           aggregatedDocs[docType] = doc.file_path || null;
         });
+      } else {
+        console.log(`[getMatchingInterns] ⚠️  Intern ${intern.id} has NO documents`);
       }
       
       return {
@@ -133,6 +146,7 @@ exports.getMatchingInterns = async (req, res) => {
     });
 
     console.log('[getMatchingInterns] ✅ SUCCESS - returning', transformedInterns.length, 'interns');
+    console.log('[getMatchingInterns] Sample data:', JSON.stringify(transformedInterns[0], null, 2));
     console.log('=== [getMatchingInterns] END ===\n');
     
     return res.json(transformedInterns);
