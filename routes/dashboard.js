@@ -65,7 +65,7 @@ router.delete('/interns/:id', authMiddleware(['adviser', 'coordinator', 'superad
     // If adviser, only allow delete if program and year_section match
     if (req.user.role === 'adviser') {
       const adviserProgram = req.user.program ? req.user.program.trim().toUpperCase() : '';
-      const adviserYearSection = req.user.year_section ? req.user.year_section.trim().toUpperCase() : '';
+      const adviserYearSection = req.user.yearSection ? req.user.yearSection.trim().toUpperCase() : '';
       const internProgram = intern.program ? intern.program.trim().toUpperCase() : '';
       const internYearSection = intern.year_section ? intern.year_section.trim().toUpperCase() : '';
       if (adviserProgram !== internProgram || adviserYearSection !== internYearSection) {
