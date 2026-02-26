@@ -12,75 +12,112 @@ exports.getMatchingInterns = async (req, res) => {
       return res.status(400).json({ message: 'Program missing from user profile.' });
     }
 
-    // Step 1: Fetch interns for program
+    // Step 1: Fetch interns for program - START SIMPLE
     console.log('[getMatchingInterns] Step 1️⃣ : Querying interns for program:', program);
 
     let interns;
     try {
+      // First try: Just fetch interns without any includes
+      console.log('[getMatchingInterns] Attempt 1: Basic query without includes...');
+      interns = await Intern.findAll({
+        where: { program },
+        raw: true,
+      });
+      console.log('[getMatchingInterns] ✅ Basic query succeeded, found', interns.length, 'interns');
+    } catch (basicErr) {
+      console.error('[getMatchingInterns] ❌ Basic query failed:', basicErr.message);
+      return res.status(500).json({ 
+        message: 'Basic query failed',
+        error: process.env.NODE_ENV === 'development' ? basicErr.message : undefined
+      });
+    }
+
+    // Now try with User include
+    try {
+      console.log('[getMatchingInterns] Attempt 2: Query with User include...');
       interns = await Intern.findAll({
         where: { program },
         include: [
-          { 
-            model: User, 
-            as: 'User',
-            required: false 
-          },
-          { 
-            model: Company, 
-            as: 'company',
-            required: false 
-          },
-          { 
-            model: InternDocuments, 
-            as: 'InternDocuments',
-            attributes: { exclude: ['file_content'] },
-            required: false
-          },
-          { 
-            model: Supervisor, 
-            as: 'Supervisor',
-            required: false 
-          },
+          { model: User, as: 'User', required: false }
         ],
       });
-      console.log('[getMatchingInterns] Step 1️⃣ COMPLETE: Found', interns.length, 'interns for program:', program);
-    } catch (dbErr) {
-      console.error('[getMatchingInterns] ❌ Database query error:', dbErr.message);
-      console.error('[getMatchingInterns] Stack:', dbErr.stack);
-      return res.status(500).json({ 
-        message: 'Database query failed',
-        error: process.env.NODE_ENV === 'development' ? dbErr.message : undefined
-      });
+      console.log('[getMatchingInterns] ✅ User include succeeded');
+    } catch (userErr) {
+      console.error('[getMatchingInterns] ⚠️  User include failed:', userErr.message);
+      // Continue without User include
     }
+
+    // Now try with Company include
+    try {
+      console.log('[getMatchingInterns] Attempt 3: Query with Company include...');
+      interns = await Intern.findAll({
+        where: { program },
+        include: [
+          { model: User, as: 'User', required: false },
+          { model: Company, as: 'company', required: false }
+        ],
+      });
+      console.log('[getMatchingInterns] ✅ Company include succeeded');
+    } catch (companyErr) {
+      console.error('[getMatchingInterns] ⚠️  Company include failed:', companyErr.message);
+      // Continue without Company include
+    }
+
+    // Now try with InternDocuments include
+    try {
+      console.log('[getMatchingInterns] Attempt 4: Query with InternDocuments include...');
+      interns = await Intern.findAll({
+        where: { program },
+        include: [
+          { model: User, as: 'User', required: false },
+          { model: Company, as: 'company', required: false },
+          { model: InternDocuments, as: 'InternDocuments', attributes: { exclude: ['file_content'] }, required: false }
+        ],
+      });
+      console.log('[getMatchingInterns] ✅ InternDocuments include succeeded');
+    } catch (docsErr) {
+      console.error('[getMatchingInterns] ⚠️  InternDocuments include failed:', docsErr.message);
+      // Continue without InternDocuments include
+    }
+
+    // Now try with Supervisor include
+    try {
+      console.log('[getMatchingInterns] Attempt 5: Query with Supervisor include...');
+      interns = await Intern.findAll({
+        where: { program },
+        include: [
+          { model: User, as: 'User', required: false },
+          { model: Company, as: 'company', required: false },
+          { model: InternDocuments, as: 'InternDocuments', attributes: { exclude: ['file_content'] }, required: false },
+          { model: Supervisor, as: 'Supervisor', required: false }
+        ],
+      });
+      console.log('[getMatchingInterns] ✅ Supervisor include succeeded');
+    } catch (supervisorErr) {
+      console.error('[getMatchingInterns] ⚠️  Supervisor include failed:', supervisorErr.message);
+      // Continue with what we have
+    }
+
+    console.log('[getMatchingInterns] Step 1️⃣ COMPLETE: Found', interns.length, 'interns');
 
     // Step 2: Filter by yearSection in JavaScript
     console.log('[getMatchingInterns] Step 2️⃣ : Filtering by yearSection');
     let filteredInterns = interns;
     if (yearSection) {
       const normalizedAdviserYearSection = (yearSection || '').replace(/\s/g, '').toLowerCase();
-      console.log('[getMatchingInterns] Adviser yearSection normalized:', normalizedAdviserYearSection);
-      
       filteredInterns = interns.filter(intern => {
         const normalizedInternYearSection = (intern.year_section || '').replace(/\s/g, '').toLowerCase();
-        const matches = normalizedAdviserYearSection === normalizedInternYearSection;
-        if (!matches) {
-          console.log('[getMatchingInterns] Intern', intern.id, 'year_section does not match:',
-            'intern:', intern.year_section, '→', normalizedInternYearSection,
-            'adviser:', yearSection, '→', normalizedAdviserYearSection);
-        }
-        return matches;
+        return normalizedAdviserYearSection === normalizedInternYearSection;
       });
-      console.log('[getMatchingInterns] Step 2️⃣ COMPLETE: Filtered from', interns.length, 'to', filteredInterns.length, 'interns');
-    } else {
-      console.log('[getMatchingInterns] Step 2️⃣ : No yearSection filter, using all', interns.length, 'interns');
+      console.log('[getMatchingInterns] Filtered from', interns.length, 'to', filteredInterns.length, 'interns');
     }
 
     // Step 3: Transform documents
-    console.log('[getMatchingInterns] Step 3️⃣ : Transforming intern data');
+    console.log('[getMatchingInterns] Step 3️⃣ : Transforming data');
     const transformedInterns = filteredInterns.map((intern) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
       
-      // Aggregate all documents into a single object with document_type as key
+      // Aggregate all documents into a single object
       const aggregatedDocs = {};
       if (Array.isArray(internData.InternDocuments)) {
         internData.InternDocuments.forEach((doc) => {
@@ -95,8 +132,7 @@ exports.getMatchingInterns = async (req, res) => {
       };
     });
 
-    console.log('[getMatchingInterns] Step 3️⃣ COMPLETE: Transformed', transformedInterns.length, 'interns');
-    console.log('[getMatchingInterns] ✅ SUCCESS - returning data');
+    console.log('[getMatchingInterns] ✅ SUCCESS - returning', transformedInterns.length, 'interns');
     console.log('=== [getMatchingInterns] END ===\n');
     
     return res.json(transformedInterns);
