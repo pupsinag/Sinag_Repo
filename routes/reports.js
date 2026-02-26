@@ -4,6 +4,7 @@ const internToSupervisorEvaluationSummaryController = require('../controllers/in
 const internAssignedToHTEController = require('../controllers/internAssignedToHTEController');
 const internEvaluationReportController = require('../controllers/internEvaluationReportController');
 const adviserListController = require('../controllers/adviserListController');
+const { generateInternSubmittedDocuments } = require('../controllers/internSubmittedDocumentsController');
 
 // Get available years/sections for a program
 router.get('/intern-evaluations/years', async (req, res, next) => {
@@ -32,6 +33,15 @@ router.post('/interns-by-hte', async (req, res, next) => {
 router.get('/advisers', async (req, res, next) => {
   try {
     await adviserListController.generateAdviserList(req, res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get intern submitted documents with cascading logic
+router.post('/intern-documents', async (req, res, next) => {
+  try {
+    await generateInternSubmittedDocuments(req, res);
   } catch (error) {
     next(error);
   }
