@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "build": "echo 'Frontend already pre-built and included'"
+    "build": "echo 'Frontend already pre-built and included'",
+    "migrate-db-files": "node migrate_files_to_db.js",
+    "migrate-old-files": "node migrate_old_files_to_db.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

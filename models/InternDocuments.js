@@ -24,6 +24,16 @@ module.exports = (sequelize, DataTypes) => {
       file_name: DataTypes.STRING,
       file_path: DataTypes.STRING,
       
+      // Store file content directly in database for Hostinger compatibility
+      file_content: {
+        type: DataTypes.BLOB('longblob'),  // Stores up to 4GB
+        allowNull: true,
+      },
+      file_size: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: true,
+      },
+      
       uploaded_date: {
         type: DataTypes.DATE,
         defaultValue: DataTypes.NOW,

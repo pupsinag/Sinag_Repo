@@ -529,12 +529,36 @@ exports.downloadSubmittedDocument = async (req, res) => {
       raw: true,
     });
 
-    if (!doc || !doc.file_path) {
+    if (!doc) {
       console.error('[downloadSubmittedDocument] Document not found:', { internId, documentType });
       return res.status(404).json({ message: 'Document not found' });
     }
 
-    // Get user for strict file recovery
+    // Try to get file from database first (Hostinger compatibility)
+    if (doc.file_content && doc.file_content.length > 0) {
+      console.log('[downloadSubmittedDocument] ✅ Serving file from database:', { size: doc.file_size });
+      
+      // Set proper headers for file download
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name || 'document'}"`);
+      res.setHeader('Content-Length', doc.file_content.length);
+      
+      return res.send(doc.file_content);
+    }
+
+    // Fallback: Try to get from disk (for backwards compatibility)
+    if (!doc.file_path) {
+      console.error('[downloadSubmittedDocument] No file content or path available:', { internId, documentType });
+      return res.status(404).json({ message: 'Document not found in database' });
+    }
+
+    // Fallback: Try to get from disk (for backwards compatibility)
+    if (!doc.file_path) {
+      console.error('[downloadSubmittedDocument] No file content or path available:', { internId, documentType });
+      return res.status(404).json({ message: 'Document not found in database' });
+    }
+
+    // Get user for file recovery
     const internUser = await User.findByPk(intern.user_id, { raw: true });
     if (!internUser) {
       console.error('[downloadSubmittedDocument] User not found:', intern.user_id);
@@ -581,20 +605,21 @@ exports.downloadSubmittedDocument = async (req, res) => {
       return res.status(403).json({ message: 'Invalid file path' });
     }
 
-    // Check if file exists
+    // Check if file exists on disk
     if (!fs.existsSync(normalizedPath)) {
-      console.error('[downloadSubmittedDocument] File does not exist:', normalizedPath);
+      console.error('[downloadSubmittedDocument] ⚠️ File not found on disk (expected for Hostinger)');
       console.log('[downloadSubmittedDocument] Stored path in DB:', doc.file_path);
       console.log('[downloadSubmittedDocument] Recovered path:', recoveredFileName);
-      console.log('[downloadSubmittedDocument] Fallback path:', fileToServe);
       
+      // Return helpful message
       return res.status(404).json({ 
-        message: 'Document file not found in storage',
-        details: `Expected: ${doc.file_path}`
+        message: 'Document file not found - it may have been removed during deployment',
+        suggestion: 'Please ask the student to re-upload this document',
+        details: doc.file_name
       });
     }
 
-    console.log('[downloadSubmittedDocument] Serving file:', normalizedPath);
+    console.log('[downloadSubmittedDocument] Serving file from disk:', normalizedPath);
     res.download(normalizedPath, doc.file_name || fileToServe, (err) => {
       if (err) {
         console.error('[downloadSubmittedDocument] Error downloading file:', err.message);

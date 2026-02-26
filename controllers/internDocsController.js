@@ -85,19 +85,34 @@ async function uploadInternDoc(req, res) {
 
     /* =========================
        CREATE OR UPDATE DOC RECORD
+       STORE FILE CONTENT IN DATABASE (Hostinger compatibility)
     ========================= */
     console.log('📝 [SAVE] Will save to DB:', {
       intern_id: intern.id,
       document_type: targetColumn,
       file_name: file.originalname,
-      file_path: file.filename,
+      file_size: file.size,
     });
+
+    // Read file content from the uploaded file
+    let fileContent = null;
+    try {
+      const uploadedFilePath = path.join(__dirname, '..', 'uploads', file.filename);
+      if (fs.existsSync(uploadedFilePath)) {
+        fileContent = fs.readFileSync(uploadedFilePath);
+        console.log('✅ [FILE READ] Read file content:', file.filename, '(', file.size, 'bytes)');
+      }
+    } catch (readErr) {
+      console.warn('⚠️ Failed to read uploaded file:', readErr.message);
+    }
 
     const docData = {
       intern_id: intern.id,
       document_type: targetColumn,
       file_name: file.originalname,
-      file_path: file.filename,
+      file_path: file.filename,  // Keep for reference
+      file_content: fileContent,  // Store actual file content in DB
+      file_size: file.size,
       uploaded_date: new Date(),
       status: 'Pending',
     };
@@ -108,7 +123,7 @@ async function uploadInternDoc(req, res) {
         console.log('📝 Updating existing document record:', { intern_id: intern.id, document_type: targetColumn });
         await existingDoc.update(docData);
         docs = existingDoc;
-        console.log('✅ Document record updated successfully');
+        console.log('✅ Document record updated successfully with file content');
       } else {
         console.log('📝 Creating new document record:', { intern_id: intern.id, document_type: targetColumn });
         docs = await InternDocuments.create(docData);
@@ -120,7 +135,7 @@ async function uploadInternDoc(req, res) {
       throw dbErr;
     }
 
-    // Verify document was saved
+    // Verify document was saved with file content
     const verifyDoc = await InternDocuments.findOne({
       where: { intern_id: intern.id, document_type: targetColumn },
     });
@@ -133,18 +148,20 @@ async function uploadInternDoc(req, res) {
       });
     }
 
-    // Verify file exists on disk
-    const filePath = path.join(__dirname, '..', 'uploads', verifyDoc.file_path);
-    const fileExists = fs.existsSync(filePath);
-    console.log('📁 [FILE CHECK]', filePath, '→', fileExists ? '✅ EXISTS' : '❌ NOT FOUND');
+    if (!verifyDoc.file_content || verifyDoc.file_content.length === 0) {
+      console.warn('⚠️ WARNING: Document saved but file_content is empty');
+      console.warn('   This may be due to old DB columns. Please run migration 020.');
+    }
 
-    if (!fileExists) {
-      console.error('❌ CRITICAL: File was not saved to disk!', filePath);
-      return res.status(500).json({
-        message: 'Document upload failed - file not saved to disk',
-        error: 'File system error',
-        debug: { expected_path: filePath, db_file_path: verifyDoc.file_path }
-      });
+    // Clean up temporary file from disk (optional, Hostinger will delete it anyway on redeploy)
+    try {
+      const tempFilePath = path.join(__dirname, '..', 'uploads', file.filename);
+      if (fs.existsSync(tempFilePath)) {
+        fs.unlinkSync(tempFilePath);
+        console.log('✅ Cleaned up temporary file from disk');
+      }
+    } catch (cleanupErr) {
+      console.warn('⚠️ Could not delete temporary file:', cleanupErr.message);
     }
 
     console.log('✅ Document verified in database:', {
@@ -350,9 +367,40 @@ async function downloadInternDoc(req, res) {
       where: { intern_id: internId, document_type: documentType },
     });
 
-    if (!doc || !doc.file_path) {
+    if (!doc) {
       console.error('[downloadInternDoc] Document not found:', { internId, documentType });
       return res.status(404).json({ message: 'Document not found' });
+    }
+
+    // Priority 1: Serve from database (Hostinger compatible)
+    if (doc.file_content && doc.file_content.length > 0) {
+      console.log('[downloadInternDoc] ✅ Serving file from database:', { size: doc.file_size });
+      
+      // Determine content type based on file extension
+      const ext = path.extname(doc.file_name || '').toLowerCase();
+      const contentTypes = {
+        '.pdf': 'application/pdf',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+      };
+      const contentType = contentTypes[ext] || 'application/octet-stream';
+      
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name || 'document'}"`);
+      res.setHeader('Content-Length', doc.file_content.length);
+      
+      return res.send(doc.file_content);
+    }
+
+    // Priority 2: Fallback to disk file (for backwards compatibility)
+    if (!doc.file_path) {
+      console.error('[downloadInternDoc] No file content or path available:', { internId, documentType });
+      return res.status(404).json({ message: 'Document not found in database' });
     }
 
     // Build file path - handle both absolute and relative paths
@@ -488,9 +536,25 @@ async function validateInternDoc(req, res) {
       return res.json({ exists: false, hasFile: false, reason: 'Document not in database' });
     }
 
+    // Check if file exists in database (Hostinger compatible)
+    if (doc.file_content && doc.file_content.length > 0) {
+      console.log('[validateInternDoc] ✅ File found in database:', { size: doc.file_size });
+      return res.json({
+        exists: true,
+        hasFile: true,
+        source: 'database',
+        fileName: doc.file_name,
+        filePath: doc.file_path,
+        fileSize: doc.file_size,
+        status: doc.status,
+        uploadedDate: doc.uploaded_date,
+      });
+    }
+
+    // Fallback: Check if file exists on disk
     if (!doc.file_path) {
-      console.log('[validateInternDoc] Document record exists but no file_path');
-      return res.json({ exists: false, hasFile: false, reason: 'No file path stored' });
+      console.log('[validateInternDoc] Document record exists but no file_path or file_content');
+      return res.json({ exists: false, hasFile: false, reason: 'No file stored in database or path' });
     }
 
     // Build file path
