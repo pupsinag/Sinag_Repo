@@ -27,10 +27,3 @@ CREATE TABLE IF NOT EXISTS `company_documents` (
   INDEX `idx_uploaded_date` (`uploaded_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='Persistent file storage for company documents (MOA, agreements, etc)';
-
--- If companies table has moaFile column, we can add a migration note
--- but we'll keep the old column for backward compatibility
-ALTER TABLE `companies` ADD COLUMN `moaFile_new` VARCHAR(255) COMMENT 'File path reference (kept for backward compatibility, use company_documents table instead)' 
-AFTER `moaFile`;
-
--- The actual file content is now stored in company_documents.file_content as LONGBLOB
