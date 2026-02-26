@@ -572,17 +572,44 @@ exports.deleteIntern = async (req, res, next) => {
       console.log('[deleteIntern] Adviser access check:', {
         adviser_id: req.user.id,
         intern_adviser_id: intern.adviser_id,
+        intern_program: intern.program,
+        intern_year_section: intern.year_section,
       });
       
-      // ✅ Check if the logged-in adviser is the assigned adviser for this intern
-      if (req.user.id !== intern.adviser_id) {
+      // Case 1: Intern already assigned to an adviser (adviser_id is set)
+      if (intern.adviser_id !== null && req.user.id !== intern.adviser_id) {
         return res.status(403).json({ 
-          message: 'Forbidden: You can only delete interns that are assigned to you',
+          message: 'Forbidden: This intern is assigned to another adviser',
           debug: {
             your_id: req.user.id,
             intern_adviser_id: intern.adviser_id,
           }
         });
+      }
+      
+      // Case 2: Intern NOT assigned yet (adviser_id is NULL) - check program/yearSection
+      if (intern.adviser_id === null) {
+        const adviserProgram = req.user.program ? req.user.program.trim().toUpperCase() : '';
+        const adviserYearSection = req.user.yearSection ? req.user.yearSection.trim().toUpperCase() : '';
+        const internProgram = intern.program ? intern.program.trim().toUpperCase() : '';
+        const internYearSection = intern.year_section ? intern.year_section.trim().toUpperCase() : '';
+        
+        // If program/yearSection don't match, deny access
+        if (adviserProgram !== internProgram || adviserYearSection !== internYearSection) {
+          return res.status(403).json({ 
+            message: 'Forbidden: You can only delete interns from your program and year/section',
+            debug: {
+              adviserProgram: adviserProgram || '(empty/null)',
+              adviserYearSection: adviserYearSection || '(empty/null)',
+              internProgram: internProgram || '(empty/null)',
+              internYearSection: internYearSection || '(empty/null)',
+            }
+          });
+        }
+        
+        // ✅ Auto-assign this intern to the adviser before deleting
+        console.log('[deleteIntern] Auto-assigning intern to adviser before deletion');
+        await intern.update({ adviser_id: req.user.id });
       }
     }
 
