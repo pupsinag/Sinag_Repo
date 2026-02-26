@@ -1,44 +1,94 @@
 // ADVISER – GET INTERNS MATCHING PROGRAM AND YEARSECTION
 exports.getMatchingInterns = async (req, res) => {
   try {
+    console.log('\n=== [getMatchingInterns] START ===');
     const { program, yearSection } = req.user;
-    console.log('--- [getMatchingInterns] Adviser program:', program);
-    console.log('--- [getMatchingInterns] Adviser yearSection:', yearSection);
+    console.log('[getMatchingInterns] req.user:', { id: req.user.id, program, yearSection });
+    
     if (!program) {
-      console.log('--- [getMatchingInterns] Adviser missing program');
+      console.log('[getMatchingInterns] ❌ Adviser missing program');
       return res.status(400).json({ message: 'Program missing from user profile.' });
     }
 
-    // Simple approach: Fetch all interns for program, filter in JavaScript
-    const { Op } = require('sequelize');
-    const interns = await require('../models').Intern.findAll({
-      where: { program },
-      include: [
-        { model: require('../models').User, as: 'User' },
-        { model: require('../models').Company, as: 'company' },
-        { 
-          model: require('../models').InternDocuments, 
-          as: 'InternDocuments',
-          attributes: { exclude: ['file_content'] } // Exclude BLOB to prevent memory issues
-        },
-        { model: require('../models').Supervisor, as: 'Supervisor' },
-      ],
+    // Step 1: Fetch interns for program
+    console.log('[getMatchingInterns] Step 1️⃣ : Querying interns for program:', program);
+    
+    const Intern = require('../models').Intern;
+    const User = require('../models').User;
+    const Company = require('../models').Company;
+    const InternDocuments = require('../models').InternDocuments;
+    const Supervisor = require('../models').Supervisor;
+    
+    console.log('[getMatchingInterns] Models loaded:', { 
+      Intern: !!Intern, 
+      User: !!User, 
+      Company: !!Company,
+      InternDocuments: !!InternDocuments,
+      Supervisor: !!Supervisor
     });
 
-    // Filter by yearSection in JavaScript if provided (matching downloadInternDoc logic)
+    let interns;
+    try {
+      interns = await Intern.findAll({
+        where: { program },
+        include: [
+          { 
+            model: User, 
+            as: 'User',
+            required: false 
+          },
+          { 
+            model: Company, 
+            as: 'company',
+            required: false 
+          },
+          { 
+            model: InternDocuments, 
+            as: 'InternDocuments',
+            attributes: { exclude: ['file_content'] },
+            required: false
+          },
+          { 
+            model: Supervisor, 
+            as: 'Supervisor',
+            required: false 
+          },
+        ],
+      });
+      console.log('[getMatchingInterns] Step 1️⃣ COMPLETE: Found', interns.length, 'interns for program:', program);
+    } catch (dbErr) {
+      console.error('[getMatchingInterns] ❌ Database query error:', dbErr.message);
+      console.error('[getMatchingInterns] Stack:', dbErr.stack);
+      return res.status(500).json({ 
+        message: 'Database query failed',
+        error: process.env.NODE_ENV === 'development' ? dbErr.message : undefined
+      });
+    }
+
+    // Step 2: Filter by yearSection in JavaScript
+    console.log('[getMatchingInterns] Step 2️⃣ : Filtering by yearSection');
     let filteredInterns = interns;
     if (yearSection) {
       const normalizedAdviserYearSection = (yearSection || '').replace(/\s/g, '').toLowerCase();
+      console.log('[getMatchingInterns] Adviser yearSection normalized:', normalizedAdviserYearSection);
+      
       filteredInterns = interns.filter(intern => {
         const normalizedInternYearSection = (intern.year_section || '').replace(/\s/g, '').toLowerCase();
-        return normalizedAdviserYearSection === normalizedInternYearSection;
+        const matches = normalizedAdviserYearSection === normalizedInternYearSection;
+        if (!matches) {
+          console.log('[getMatchingInterns] Intern', intern.id, 'year_section does not match:',
+            'intern:', intern.year_section, '→', normalizedInternYearSection,
+            'adviser:', yearSection, '→', normalizedAdviserYearSection);
+        }
+        return matches;
       });
-      console.log('--- [getMatchingInterns] Filtered from', interns.length, 'to', filteredInterns.length, 'interns');
+      console.log('[getMatchingInterns] Step 2️⃣ COMPLETE: Filtered from', interns.length, 'to', filteredInterns.length, 'interns');
     } else {
-      console.log('--- [getMatchingInterns] No yearSection - returning all', interns.length, 'interns for program');
+      console.log('[getMatchingInterns] Step 2️⃣ : No yearSection filter, using all', interns.length, 'interns');
     }
-    
-    // Transform InternDocuments array into object structure for frontend
+
+    // Step 3: Transform documents
+    console.log('[getMatchingInterns] Step 3️⃣ : Transforming intern data');
     const transformedInterns = filteredInterns.map((intern) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
       
@@ -51,29 +101,24 @@ exports.getMatchingInterns = async (req, res) => {
         });
       }
       
-      // Return as array with single element (matching frontend expectation: InternDocuments[0])
       return {
         ...internData,
-        InternDocuments: [aggregatedDocs], // Wrap in array for frontend
+        InternDocuments: [aggregatedDocs],
       };
     });
+
+    console.log('[getMatchingInterns] Step 3️⃣ COMPLETE: Transformed', transformedInterns.length, 'interns');
+    console.log('[getMatchingInterns] ✅ SUCCESS - returning data');
+    console.log('=== [getMatchingInterns] END ===\n');
     
-    transformedInterns.forEach((intern) => {
-      console.log('--- [getMatchingInterns] Intern:', {
-        id: intern.id,
-        program: intern.program,
-        year_section: intern.year_section,
-        user_id: intern.user_id,
-        user_program: intern.User?.program,
-        user_firstName: intern.User?.firstName,
-        user_lastName: intern.User?.lastName,
-        internDocuments: intern.InternDocuments,
-      });
-    });
     return res.json(transformedInterns);
   } catch (err) {
-    console.error('❌ Error fetching matching interns:', err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('\n❌ [getMatchingInterns] CRITICAL ERROR:', err.message);
+    console.error('[getMatchingInterns] Stack:', err.stack);
+    res.status(500).json({ 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    });
   }
 };
 const { Intern, User } = require('../models');
