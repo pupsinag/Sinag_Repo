@@ -119,27 +119,17 @@ exports.getMatchingInterns = async (req, res) => {
       });
       
       // Transform documents array into object organized by document_type
-      // Frontend expects: { consent_form: {download_url: "..."}, notarized_agreement: {...}, ... }
+      // Frontend expects: { consent_form: "/api/...", notarized_agreement: "/api/...", ... }
       const documentsObject = {};
       internDocumentsArray.forEach(doc => {
         const docType = doc.document_type || 'unknown';
         const downloadUrl = `/api/intern-docs/download/${intern.id}/${docType}`;
-        
-        documentsObject[docType] = {
-          id: doc.id,
-          file_name: doc.file_name,
-          file_path: doc.file_path,
-          download_url: downloadUrl,
-          file_mime_type: doc.file_mime_type || 'application/octet-stream',
-          uploaded_date: doc.uploaded_date,
-          status: doc.status,
-          remarks: doc.remarks
-        };
+        documentsObject[docType] = downloadUrl;  // Just the URL string, not an object
       });
       
       return {
         ...internData,
-        InternDocuments: [documentsObject],  // Frontend expects array with single object containing document properties
+        InternDocuments: [documentsObject],  // Frontend expects array with single object containing download URLs as strings
       };
     });
 
