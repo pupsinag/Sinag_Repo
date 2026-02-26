@@ -44,6 +44,14 @@ exports.getMatchingInterns = async (req, res) => {
     
     console.log(`--- [getMatchingInterns] Found ${interns.length} interns`);
     
+    // ✅ AUTO-LINK: Update interns without adviser_id to link them to current adviser
+    for (const intern of interns) {
+      if (!intern.adviser_id || intern.adviser_id === 0) {
+        console.log(`[getMatchingInterns] Auto-linking intern ${intern.id} to adviser ${req.user.id}`);
+        await intern.update({ adviser_id: req.user.id });
+      }
+    }
+    
     const uploadsDir = path.join(__dirname, '..', 'uploads');
     
     // Transform InternDocuments array into object structure for frontend

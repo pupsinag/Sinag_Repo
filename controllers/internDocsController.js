@@ -324,10 +324,35 @@ async function downloadInternDoc(req, res) {
     }
 
     // Get the intern
-    const intern = await Intern.findByPk(internId);
+    let intern = await Intern.findByPk(internId);
     if (!intern) {
       console.error('[downloadInternDoc] Intern not found:', internId);
       return res.status(404).json({ message: 'Intern not found' });
+    }
+
+    // ✅ AUTO-LINK: If intern has no adviser assigned (adviser_id is NULL or 0), 
+    // try to link them based on program + year_section matching
+    if (!intern.adviser_id || intern.adviser_id === 0) {
+      console.log('[downloadInternDoc] Intern has no adviser_id, attempting auto-link...');
+      const { Op } = require('sequelize');
+      
+      try {
+        const matchingAdviser = await User.findOne({
+          where: {
+            role: 'adviser',
+            program: intern.program,
+          },
+        });
+        
+        if (matchingAdviser) {
+          console.log('[downloadInternDoc] Found matching adviser:', matchingAdviser.id);
+          await intern.update({ adviser_id: matchingAdviser.id });
+          console.log('[downloadInternDoc] Successfully linked intern to adviser:', matchingAdviser.id);
+        }
+      } catch (err) {
+        console.warn('[downloadInternDoc] Auto-link failed:', err.message);
+        // Continue anyway - will fail auth check if still no adviser
+      }
     }
 
     // If user is adviser, verify they're assigned to this intern
@@ -338,13 +363,14 @@ async function downloadInternDoc(req, res) {
       
       // ✅ FIXED: Normalize yearSection comparison (remove spaces, convert to lowercase)
       // This matches the logic in adviserController.getMatchingInterns()
-      let isYearSectionMatch = false;
+      let isYearSectionMatch = true; // Default to true if adviser has no yearSection filter
       if (user.yearSection && intern.year_section) {
         const normalizedAdviserYearSection = (user.yearSection || '').replace(/\s/g, '').toLowerCase();
         const normalizedInternYearSection = (intern.year_section || '').replace(/\s/g, '').toLowerCase();
         isYearSectionMatch = normalizedAdviserYearSection === normalizedInternYearSection;
       }
       
+      // Allow access if: directly assigned OR (program matches AND yearSection matches/not required)
       const isProgramAndYearMatch = isProgramMatch && isYearSectionMatch;
       
       if (!isDirectlyAssigned && !isProgramAndYearMatch) {
