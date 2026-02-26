@@ -110,17 +110,36 @@ exports.getMatchingInterns = async (req, res) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
       
       // Attach documents from the separately-fetched map
-      const internDocuments = documentsByInternId[intern.id] || [];
+      const internDocumentsArray = documentsByInternId[intern.id] || [];
       
       console.log(`[getMatchingInterns] Intern ${intern.id}:`, {
         id: intern.id,
-        documentCount: internDocuments.length,
-        documents: internDocuments.length > 0 ? internDocuments.map(d => ({ type: d.document_type, file: d.file_name })) : []
+        documentCount: internDocumentsArray.length,
+        documents: internDocumentsArray.length > 0 ? internDocumentsArray.map(d => ({ type: d.document_type, file: d.file_name })) : []
+      });
+      
+      // Transform documents array into object organized by document_type
+      // Frontend expects: { consent_form: {download_url: "..."}, notarized_agreement: {...}, ... }
+      const documentsObject = {};
+      internDocumentsArray.forEach(doc => {
+        const docType = doc.document_type || 'unknown';
+        const downloadUrl = `/api/intern-docs/download/${intern.id}/${docType}`;
+        
+        documentsObject[docType] = {
+          id: doc.id,
+          file_name: doc.file_name,
+          file_path: doc.file_path,
+          download_url: downloadUrl,
+          file_mime_type: doc.file_mime_type || 'application/octet-stream',
+          uploaded_date: doc.uploaded_date,
+          status: doc.status,
+          remarks: doc.remarks
+        };
       });
       
       return {
         ...internData,
-        InternDocuments: internDocuments,
+        InternDocuments: [documentsObject],  // Frontend expects array with single object containing document properties
       };
     });
 
