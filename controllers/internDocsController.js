@@ -529,7 +529,7 @@ async function downloadInternDoc(req, res) {
       
       const mimeType = doc.file_mime_type || 'application/octet-stream';
       res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
+      res.setHeader('Content-Disposition', `inline; filename="${doc.file_name}"`);  // 'inline' = open in browser tab
       res.setHeader('Content-Length', doc.file_content.length);
       
       // Send buffer directly from database
@@ -760,7 +760,7 @@ async function serveUploadedFile(req, res) {
     // Serve from database
     const mimeType = doc.file_mime_type || 'application/octet-stream';
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
+    res.setHeader('Content-Disposition', `inline; filename="${doc.file_name}"`);  // 'inline' = open in browser
     res.setHeader('Content-Length', doc.file_content.length);
     
     console.log('[serveUploadedFile] ✅ Serving from database:', {

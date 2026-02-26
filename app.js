@@ -76,7 +76,7 @@ app.use('/uploads', async (req, res, next) => {
       // Serve from database
       const mimeType = doc.file_mime_type || 'application/octet-stream';
       res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `inline; filename="${doc.file_name}"`);
+      res.setHeader('Content-Disposition', `inline; filename="${doc.file_name}"`);  // 'inline' = open in browser
       res.setHeader('Content-Length', doc.file_content.length);
       res.setHeader('Cache-Control', 'public, max-age=3600');
       
