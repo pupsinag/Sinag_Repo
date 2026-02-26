@@ -91,13 +91,48 @@ async function uploadInternDoc(req, res) {
       document_type: targetColumn,
       file_name: file.originalname,
       file_path: file.filename,
+      file_size: file.size,
     });
+
+    // Read file content for database storage
+    let fileContent = null;
+    let fileMimeType = 'application/octet-stream';
+    
+    try {
+      const filePath = file.path;
+      fileContent = fs.readFileSync(filePath);
+      
+      // Determine MIME type from file extension
+      const ext = path.extname(file.originalname).toLowerCase();
+      const mimeTypes = {
+        '.pdf': 'application/pdf',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      };
+      fileMimeType = mimeTypes[ext] || 'application/octet-stream';
+      
+      console.log('📁 [FILE CONTENT] Read file successfully:', {
+        size: fileContent.length,
+        mimeType: fileMimeType,
+      });
+    } catch (fileReadErr) {
+      console.warn('⚠️ Failed to read file content:', fileReadErr.message);
+      console.warn('   File will be served from filesystem fallback');
+    }
 
     const docData = {
       intern_id: intern.id,
       document_type: targetColumn,
       file_name: file.originalname,
       file_path: file.filename,
+      file_content: fileContent,
+      file_mime_type: fileMimeType,
       uploaded_date: new Date(),
       status: 'Pending',
     };
@@ -448,6 +483,23 @@ async function downloadInternDoc(req, res) {
 
     console.log('[downloadInternDoc] Serving file:', normalizedPath);
 
+    // ✅ NEW: First try to serve from database (persistent across redeployments)
+    if (doc.file_content && doc.file_content.length > 0) {
+      console.log('[downloadInternDoc] 📦 Serving file from DATABASE');
+      
+      const mimeType = doc.file_mime_type || 'application/octet-stream';
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
+      res.setHeader('Content-Length', doc.file_content.length);
+      
+      // Send buffer directly from database
+      res.send(doc.file_content);
+      return;
+    }
+
+    // 🔄 FALLBACK: Serve from filesystem if database storage not available
+    console.log('[downloadInternDoc] 💾 File not in database, serving from filesystem fallback');
+
     // Serve the file
     res.download(normalizedPath, doc.file_name, (err) => {
       if (err) {
@@ -488,9 +540,25 @@ async function validateInternDoc(req, res) {
       return res.json({ exists: false, hasFile: false, reason: 'Document not in database' });
     }
 
+    // ✅ NEW: Check if file exists in database (takes priority)
+    const hasDbContent = doc.file_content && doc.file_content.length > 0;
+    
+    if (hasDbContent) {
+      console.log('[validateInternDoc] File found in DATABASE');
+      return res.json({
+        exists: true,
+        hasFile: true,
+        inDatabase: true,
+        fileName: doc.file_name,
+        status: doc.status,
+        uploadedDate: doc.uploaded_date,
+        fileSize: doc.file_content.length,
+      });
+    }
+
     if (!doc.file_path) {
-      console.log('[validateInternDoc] Document record exists but no file_path');
-      return res.json({ exists: false, hasFile: false, reason: 'No file path stored' });
+      console.log('[validateInternDoc] Document record exists but no file_path or database content');
+      return res.json({ exists: false, hasFile: false, reason: 'No file path or database content stored' });
     }
 
     // Build file path
@@ -507,6 +575,7 @@ async function validateInternDoc(req, res) {
     return res.json({
       exists: true,
       hasFile: fileExists,
+      inDatabase: false,
       fileName: doc.file_name,
       filePath: doc.file_path,
       status: doc.status,

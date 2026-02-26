@@ -24,6 +24,19 @@ module.exports = (sequelize, DataTypes) => {
       file_name: DataTypes.STRING,
       file_path: DataTypes.STRING,
       
+      file_content: {
+        type: DataTypes.BLOB('long'),
+        allowNull: true,
+        comment: 'File content stored as binary data for persistence across redeployments',
+      },
+      
+      file_mime_type: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        defaultValue: 'application/octet-stream',
+        comment: 'MIME type of the uploaded file',
+      },
+      
       uploaded_date: {
         type: DataTypes.DATE,
         defaultValue: DataTypes.NOW,
