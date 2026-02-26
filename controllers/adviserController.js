@@ -1,4 +1,5 @@
 const { Intern, User, Company, InternDocuments, Supervisor } = require('../models');
+const { Op } = require('sequelize');
 
 // ADVISER – GET INTERNS MATCHING PROGRAM AND YEARSECTION
 exports.getMatchingInterns = async (req, res) => {
@@ -38,20 +39,30 @@ exports.getMatchingInterns = async (req, res) => {
     // Step 1b: Separately fetch documents for these interns
     console.log('[getMatchingInterns] Step 1️⃣b: Fetching documents for interns...');
     const internIds = interns.map(i => i.id);
+    console.log('[getMatchingInterns] Intern IDs to query for documents:', internIds);
+    
     let allDocuments = [];
     try {
       if (internIds.length > 0) {
+        console.log('[getMatchingInterns] Querying InternDocuments with Op.in for ids:', internIds);
+        
         allDocuments = await InternDocuments.findAll({
           where: {
-            intern_id: { [require('sequelize').Op.in]: internIds }
+            intern_id: { [Op.in]: internIds }
           },
           attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path', 'file_mime_type', 'uploaded_date', 'status', 'remarks'],
         });
         console.log('[getMatchingInterns] ✅ Found', allDocuments.length, 'documents total');
+        
+        if (allDocuments.length > 0) {
+          console.log('[getMatchingInterns] First document:', JSON.stringify(allDocuments[0], null, 2));
+        }
+      } else {
+        console.log('[getMatchingInterns] ⚠️  No intern IDs to query for documents');
       }
     } catch (docErr) {
-      console.error('[getMatchingInterns] ⚠️  Failed to fetch documents:', docErr.message);
-      console.error('[getMatchingInterns] ⚠️  Continuing without documents');
+      console.error('[getMatchingInterns] ❌ Failed to fetch documents:', docErr.message);
+      console.error('[getMatchingInterns] ❌ Full error:', docErr);
       // Continue without documents - not critical
     }
 
@@ -112,8 +123,6 @@ exports.getMatchingInterns = async (req, res) => {
     });
   }
 };
-
-const { Op } = require('sequelize');
 
 /* =================================================
    INTERN – GET ASSIGNED ADVISER
