@@ -6,7 +6,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const upload = require('../middleware/upload');
 
 // Controllers
-const { uploadInternDoc, getInternDocuments, downloadInternDoc, validateInternDoc } = require('../controllers/internDocsController');
+const { uploadInternDoc, getInternDocuments, getAdviserInternDocuments, downloadInternDoc, validateInternDoc } = require('../controllers/internDocsController');
 
 const consentController = require('../controllers/consentController');
 const notarizedAgreementController = require('../controllers/notarizedAgreementController');
@@ -44,6 +44,9 @@ router.post(
 
 // Get all document statuses for logged-in intern
 router.get('/intern-docs/me', getInternDocuments);
+
+// ✅ NEW: Get all documents for a specific intern (for advisers/coordinators)
+router.get('/adviser/intern-docs/:internId', getAdviserInternDocuments);
 
 // Download specific intern document (for adviser/admin)
 router.get('/intern-docs/download/:internId/:documentType', downloadInternDoc);

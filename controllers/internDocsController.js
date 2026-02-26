@@ -208,9 +208,9 @@ async function uploadInternDoc(req, res) {
 }
 
 /* =========================
-   GET INTERN DOCUMENTS
+   GET INTERN DOCUMENTS (for self)
 ========================= */
-// GET /api/auth/intern-docs/me
+// GET /api/documents/intern-docs/me
 async function getInternDocuments(req, res) {
   try {
     console.log('[getInternDocuments] Fetching for user_id:', req.user.id);
@@ -259,6 +259,136 @@ async function getInternDocuments(req, res) {
     console.error('Stack trace:', err.stack);
     return res.status(500).json({ 
       message: 'Failed to fetch documents',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
+  }
+}
+
+/* =========================
+   GET ADVISER'S INTERN DOCUMENTS (NEW)
+========================= */
+// GET /api/documents/adviser/intern-docs/:internId
+// Allows adviser/coordinator to fetch all documents for their assigned interns
+async function getAdviserInternDocuments(req, res) {
+  try {
+    const { internId } = req.params;
+    const user = req.user;
+
+    console.log('\n\n🔍 [getAdviserInternDocuments] ========== REQUEST ==========');
+    console.log('[getAdviserInternDocuments] User:', { id: user.id, role: user.role, program: user.program, yearSection: user.yearSection });
+    console.log('[getAdviserInternDocuments] Requested internId:', internId);
+
+    // ✅ AUTHORIZATION: Only advisers, coordinators, and superadmins can access
+    const allowedRoles = ['adviser', 'coordinator', 'superadmin'];
+    if (!allowedRoles.includes(user.role?.toLowerCase())) {
+      console.error('[getAdviserInternDocuments] User role not allowed:', user.role);
+      return res.status(403).json({ 
+        message: 'You do not have permission to view intern documents' 
+      });
+    }
+
+    // Get the intern with relationships
+    const intern = await Intern.findByPk(internId, {
+      include: [
+        {
+          model: User,
+          as: 'User',
+          attributes: ['id', 'firstName', 'lastName', 'email', 'program', 'yearSection'],
+        },
+        {
+          model: Company,
+          as: 'company',
+          attributes: ['id', 'name', 'moaFile'],
+        },
+      ],
+    });
+
+    if (!intern) {
+      console.error('[getAdviserInternDocuments] Intern not found:', internId);
+      return res.status(404).json({ message: 'Intern not found' });
+    }
+
+    // ✅ AUTHORIZATION CHECK: Verify adviser is assigned to this intern
+    if (user.role?.toLowerCase() === 'adviser') {
+      const isDirectlyAssigned = intern.adviser_id === user.id;
+      const isProgramMatch = user.program && intern.program && user.program === intern.program;
+      
+      // Normalize yearSection comparison (remove spaces, lowercase)
+      let isYearSectionMatch = false;
+      if (user.yearSection && intern.year_section) {
+        const normalizedAdviserYearSection = (user.yearSection || '').replace(/\s/g, '').toLowerCase();
+        const normalizedInternYearSection = (intern.year_section || '').replace(/\s/g, '').toLowerCase();
+        isYearSectionMatch = normalizedAdviserYearSection === normalizedInternYearSection;
+      }
+      
+      const isProgramAndYearMatch = isProgramMatch && isYearSectionMatch;
+      
+      if (!isDirectlyAssigned && !isProgramAndYearMatch) {
+        console.error('[getAdviserInternDocuments] Adviser not authorized for this intern', {
+          adviserId: user.id,
+          internAdviserId: intern.adviser_id,
+          adviserProgram: user.program,
+          internProgram: intern.program,
+          adviserYearSection: user.yearSection,
+          internYearSection: intern.year_section,
+        });
+        return res.status(403).json({ 
+          message: 'You are not authorized to access this intern\'s documents' 
+        });
+      }
+    }
+
+    // Get all documents for the intern
+    const docsList = await InternDocuments.findAll({
+      where: { intern_id: internId },
+      order: [['uploaded_date', 'DESC']],
+      raw: true,
+    });
+
+    console.log('[getAdviserInternDocuments] Found', docsList.length, 'document(s) for intern', internId);
+
+    // Transform to include file status information
+    const docsWithStatus = docsList.map(doc => ({
+      id: doc.id,
+      document_type: doc.document_type,
+      file_name: doc.file_name,
+      status: doc.status,
+      uploaded_date: doc.uploaded_date,
+      remarks: doc.remarks,
+      // Check file availability (database or filesystem)
+      has_file_content: !!(doc.file_content && doc.file_content.length > 0),
+      has_file_path: !!doc.file_path,
+      file_size: doc.file_content ? doc.file_content.length : 0,
+      storage_location: (doc.file_content && doc.file_content.length > 0) ? 'database' : 'filesystem',
+    }));
+
+    // Return comprehensive response
+    return res.json({
+      success: true,
+      intern: {
+        id: intern.id,
+        name: `${intern.User?.firstName || ''} ${intern.User?.lastName || ''}`,
+        email: intern.User?.email,
+        program: intern.program,
+        year_section: intern.year_section,
+        status: intern.status,
+        adviser_id: intern.adviser_id,
+        company_id: intern.company_id,
+        company_name: intern.company?.name,
+      },
+      documents: docsWithStatus,
+      moa: intern.company?.moaFile || null,
+      summary: {
+        total_documents: docsList.length,
+        submitted_count: docsWithStatus.filter(d => d.has_file_content || d.has_file_path).length,
+        pending_count: docsWithStatus.filter(d => !d.has_file_content && !d.has_file_path).length,
+      },
+    });
+  } catch (err) {
+    console.error('❌ GET ADVISER INTERN DOCS ERROR:', err.message);
+    console.error('Stack trace:', err.stack);
+    return res.status(500).json({
+      message: 'Failed to fetch intern documents',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined,
     });
   }
@@ -592,6 +722,7 @@ async function validateInternDoc(req, res) {
 module.exports = {
   uploadInternDoc,
   getInternDocuments,
+  getAdviserInternDocuments,
   deleteInternDoc,
   downloadInternDoc,
   validateInternDoc,
