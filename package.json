@@ -8,7 +8,8 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "build": "echo 'Frontend already pre-built and included'",
-    "migrate:020": "node migrations/run_020_migration.js"
+    "migrate:020": "node migrations/run_020_migration.js",
+    "verify:files": "node verify_file_storage.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
