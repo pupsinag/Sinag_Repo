@@ -119,12 +119,12 @@ exports.getMatchingInterns = async (req, res) => {
       });
       
       // Transform documents array into object organized by document_type
-      // Frontend expects: { consent_form: "/api/...", notarized_agreement: "/api/...", ... }
+      // Return just the file_path - frontend will prepend /uploads/ to it
+      // This works because we have a /uploads/:filename endpoint that serves from the database
       const documentsObject = {};
       internDocumentsArray.forEach(doc => {
         const docType = doc.document_type || 'unknown';
-        const downloadUrl = `/api/intern-docs/download/${intern.id}/${docType}`;
-        documentsObject[docType] = downloadUrl;  // Just the URL string, not an object
+        documentsObject[docType] = doc.file_path;  // Just return the filename
       });
       
       return {

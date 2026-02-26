@@ -725,10 +725,67 @@ async function validateInternDoc(req, res) {
   }
 }
 
+/* =========================
+   SERVE FILE FROM UPLOADS PATH (Database-first, for /uploads/* requests)
+========================= */
+// This endpoint allows accessing files via /uploads/:filename
+// The frontend returns /uploads/filename.pdf, which gets routed here
+// We look up the file in the database and serve it if found
+async function serveUploadedFile(req, res) {
+  try {
+    const { filename } = req.params;
+    
+    console.log('[serveUploadedFile] Request for filename:', filename);
+    
+    if (!filename) {
+      return res.status(400).json({ message: 'Filename required' });
+    }
+    
+    // Find document by file_path
+    const doc = await InternDocuments.findOne({
+      where: { file_path: filename },
+    });
+    
+    if (!doc) {
+      console.error('[serveUploadedFile] Document not found with file_path:', filename);
+      return res.status(404).json({ message: 'File not found' });
+    }
+    
+    // Check if file exists in database
+    if (!doc.file_content || doc.file_content.length === 0) {
+      console.error('[serveUploadedFile] File content not in database:', filename);
+      return res.status(404).json({ message: 'File content not available' });
+    }
+    
+    // Serve from database
+    const mimeType = doc.file_mime_type || 'application/octet-stream';
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
+    res.setHeader('Content-Length', doc.file_content.length);
+    
+    console.log('[serveUploadedFile] ✅ Serving from database:', {
+      filename: filename,
+      originalName: doc.file_name,
+      mimeType: mimeType,
+      size: doc.file_content.length,
+    });
+    
+    res.send(doc.file_content);
+    return;
+  } catch (err) {
+    console.error('❌ SERVE UPLOADED FILE ERROR:', err.message);
+    res.status(500).json({
+      message: 'Failed to serve file',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
+  }
+}
+
 module.exports = {
   uploadInternDoc,
   getInternDocuments,
   getAdviserInternDocuments,
+  serveUploadedFile,
   deleteInternDoc,
   downloadInternDoc,
   validateInternDoc,

@@ -40,11 +40,11 @@ app.use(morgan('dev'));
 
 // =========================
 // STATIC FILES - UPLOADS (BEFORE other routes)
+// Database-first serving for intern documents
 // =========================
-app.use(
-  '/uploads',
-  (req, res, next) => {
-    // ✅ Set CORS headers explicitly for images
+app.use('/uploads', async (req, res, next) => {
+  try {
+    // Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
@@ -54,8 +54,47 @@ app.use(
       return res.sendStatus(200);
     }
 
+    // Extract filename from URL
+    const filename = req.path.replace(/^\//, '');  // Remove leading slash
+    
+    if (!filename) {
+      return next();  // Let static middleware handle
+    }
+
+    console.log('[/uploads middleware] Requested filename:', filename);
+
+    // Try to find file in database first
+    const { InternDocuments } = require('./models');
+    
+    const doc = await InternDocuments.findOne({
+      where: { file_path: filename },
+    });
+
+    if (doc && doc.file_content && doc.file_content.length > 0) {
+      console.log('[/uploads middleware] ✅ Found in database:', filename);
+      
+      // Serve from database
+      const mimeType = doc.file_mime_type || 'application/octet-stream';
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Content-Disposition', `inline; filename="${doc.file_name}"`);
+      res.setHeader('Content-Length', doc.file_content.length);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      
+      return res.send(doc.file_content);
+    }
+
+    console.log('[/uploads middleware] Not in database, trying filesystem...');
+    // Not in database, fall through to static file serving
     next();
-  },
+  } catch (err) {
+    console.error('[/uploads middleware] Error:', err.message);
+    next();  // Fall through to static on error
+  }
+});
+
+// Fallback: Serve from filesystem if not in database
+app.use(
+  '/uploads',
   express.static(path.join(__dirname, 'uploads'), {
     setHeaders: (res, filePath) => {
       // Set proper cache and content headers

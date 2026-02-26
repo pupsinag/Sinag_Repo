@@ -6,7 +6,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const upload = require('../middleware/upload');
 
 // Controllers
-const { uploadInternDoc, getInternDocuments, getAdviserInternDocuments, downloadInternDoc, validateInternDoc } = require('../controllers/internDocsController');
+const { uploadInternDoc, getInternDocuments, getAdviserInternDocuments, serveUploadedFile, downloadInternDoc, validateInternDoc } = require('../controllers/internDocsController');
 
 const consentController = require('../controllers/consentController');
 const notarizedAgreementController = require('../controllers/notarizedAgreementController');
@@ -73,5 +73,13 @@ router.get('/notarized-agreement-data', notarizedAgreementController.getAgreemen
 
 // Save notarized agreement + generate PDF
 router.post('/notarized-agreement-save', notarizedAgreementController.saveAgreement);
+
+/* =========================
+   SERVE UPLOADED FILES (Database-first)
+========================= */
+// This route handles /api/uploads/:filename requests from the frontend
+// The frontend uses /uploads/filename.pdf, which becomes /api/uploads/filename.pdf
+// We look up the file in the database and serve it
+router.get('/uploads/:filename', serveUploadedFile);
 
 module.exports = router;
