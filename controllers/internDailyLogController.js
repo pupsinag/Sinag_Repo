@@ -120,16 +120,34 @@ exports.createDailyLog = async (req, res) => {
     let photo_content = null;
 
     if (req.files && req.files.length > 0) {
+      const fs = require('fs');
+      const path = require('path');
+      
       // ✅ Store array of filenames
       photo_paths = req.files.map(f => f.filename);
       
-      // ✅ Store actual image data as base64 for persistence
-      photo_content = req.files.map(f => ({
-        filename: f.filename,
-        mimetype: f.mimetype,
-        data: f.buffer.toString('base64'), // Convert to base64 string for JSON storage
-        size: f.size,
-      }));
+      // ✅ Read files from disk and store as base64 for persistence
+      photo_content = req.files.map(f => {
+        try {
+          const filePath = path.join(__dirname, '../uploads', f.filename);
+          const fileData = fs.readFileSync(filePath);
+          return {
+            filename: f.filename,
+            mimetype: f.mimetype,
+            data: fileData.toString('base64'), // Convert binary to base64 string
+            size: f.size,
+          };
+        } catch (err) {
+          console.error(`❌ Failed to read photo file ${f.filename}:`, err.message);
+          return {
+            filename: f.filename,
+            mimetype: f.mimetype,
+            data: null,
+            size: f.size,
+            error: err.message,
+          };
+        }
+      });
       
       console.log('✅ Photos saved successfully');
       req.files.forEach((file, index) => {
@@ -820,8 +838,34 @@ exports.updateDailyLog = async (req, res) => {
           }
         });
       }
+      
       // Store new filenames
       log.photo_path = req.files.map(f => f.filename);
+      
+      // ✅ Read files from disk and store as base64 for persistence
+      const fs = require('fs');
+      log.photo_content = req.files.map(f => {
+        try {
+          const filePath = path.join(__dirname, '../uploads', f.filename);
+          const fileData = fs.readFileSync(filePath);
+          return {
+            filename: f.filename,
+            mimetype: f.mimetype,
+            data: fileData.toString('base64'),
+            size: f.size,
+          };
+        } catch (err) {
+          console.error(`❌ Failed to read photo file ${f.filename}:`, err.message);
+          return {
+            filename: f.filename,
+            mimetype: f.mimetype,
+            data: null,
+            size: f.size,
+            error: err.message,
+          };
+        }
+      });
+      console.log('✅ Photo data updated in database for persistence');
     }
 
     await log.save();
