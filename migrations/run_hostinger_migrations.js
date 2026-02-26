@@ -43,6 +43,7 @@ async function runMigrations() {
     try {
       await sequelize.query(`
         ALTER TABLE intern_documents 
+        ADD COLUMN IF NOT EXISTS file_mime_type VARCHAR(100) DEFAULT 'application/octet-stream',
         ADD COLUMN IF NOT EXISTS download_count INT DEFAULT 0,
         ADD COLUMN IF NOT EXISTS last_accessed_by INT,
         ADD COLUMN IF NOT EXISTS last_accessed_date DATETIME,
@@ -57,6 +58,11 @@ async function runMigrations() {
       await sequelize.query(`
         CREATE INDEX IF NOT EXISTS idx_intern_documents_document_type 
         ON intern_documents(document_type)
+      `);
+      
+      await sequelize.query(`
+        CREATE INDEX IF NOT EXISTS idx_intern_documents_uploaded_date 
+        ON intern_documents(uploaded_date DESC)
       `);
       
       console.log('✅ Migration 021 completed\n');

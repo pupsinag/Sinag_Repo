@@ -359,6 +359,7 @@ async function getAdviserInternDocuments(req, res) {
       has_file_content: !!(doc.file_content && doc.file_content.length > 0),
       has_file_path: !!doc.file_path,
       file_size: doc.file_content ? doc.file_content.length : 0,
+      file_mime_type: doc.file_mime_type || 'application/octet-stream',
       storage_location: (doc.file_content && doc.file_content.length > 0) ? 'database' : 'filesystem',
     }));
 
