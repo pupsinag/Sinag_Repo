@@ -73,12 +73,30 @@ app.use('/uploads', async (req, res, next) => {
     if (doc && doc.file_content && doc.file_content.length > 0) {
       console.log('[/uploads middleware] ✅ Found in database:', filename);
       
-      // Serve from database
-      const mimeType = doc.file_mime_type || 'application/octet-stream';
+      // Serve from database - FORCE inline display
+      let mimeType = doc.file_mime_type || 'application/octet-stream';
+      
+      // Override MIME type for common types to ensure browser displays instead of downloads
+      if (filename.toLowerCase().endsWith('.pdf')) {
+        mimeType = 'application/pdf';
+      } else if (filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        mimeType = 'image/' + filename.split('.').pop().toLowerCase();
+      } else if (filename.toLowerCase().endsWith('.txt')) {
+        mimeType = 'text/plain';
+      }
+      
       res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `inline; filename="${doc.file_name}"`);  // 'inline' = open in browser
+      res.setHeader('Content-Disposition', 'inline');  // FORCE inline - open in browser, never download
       res.setHeader('Content-Length', doc.file_content.length);
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');  // Prevent caching old headers
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      
+      console.log('[/uploads middleware] Serving with headers:', {
+        'Content-Type': mimeType,
+        'Content-Disposition': 'inline',
+        'Content-Length': doc.file_content.length
+      });
       
       return res.send(doc.file_content);
     }
@@ -97,14 +115,20 @@ app.use(
   '/uploads',
   express.static(path.join(__dirname, 'uploads'), {
     setHeaders: (res, filePath) => {
-      // Set proper cache and content headers
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+      // Set proper cache and content headers - FORCE inline display
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
 
       if (filePath.endsWith('.pdf')) {
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', 'inline');
+        res.setHeader('Content-Disposition', 'inline');  // Force inline
       } else if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        res.setHeader('Content-Type', 'image/jpeg');
+        const ext = filePath.split('.').pop().toLowerCase();
+        res.setHeader('Content-Type', 'image/' + ext);
+        res.setHeader('Content-Disposition', 'inline');  // Force inline
+      } else if (filePath.match(/\.(doc|docx|xls|xlsx|txt)$/i)) {
+        res.setHeader('Content-Disposition', 'inline');  // Force inline for office files
       }
     },
   }),
