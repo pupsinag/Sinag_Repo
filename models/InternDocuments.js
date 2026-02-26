@@ -55,6 +55,7 @@ module.exports = (sequelize, DataTypes) => {
   InternDocuments.associate = (models) => {
     InternDocuments.belongsTo(models.Intern, {
       foreignKey: 'intern_id',
+      as: 'intern',
     });
   };
 
