@@ -17,36 +17,54 @@ exports.getMatchingInterns = async (req, res) => {
 
     let interns;
     try {
-      console.log('[getMatchingInterns] Attempting to fetch interns with all includes...');
+      console.log('[getMatchingInterns] Attempting to fetch interns...');
       interns = await Intern.findAll({
         where: { program },
         include: [
           { model: User, as: 'User', required: false },
           { model: Company, as: 'company', required: false },
-          { 
-            model: InternDocuments, 
-            as: 'InternDocuments', 
-            attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path', 'file_mime_type', 'uploaded_date', 'status', 'remarks', 'createdAt', 'updatedAt'],
-            required: false 
-          },
           { model: Supervisor, as: 'Supervisor', required: false }
         ],
       });
-      console.log('[getMatchingInterns] ✅ Query succeeded, found', interns.length, 'interns');
-      
-      // Log first intern's documents for debugging
-      if (interns.length > 0) {
-        console.log('[getMatchingInterns] First intern id:', interns[0].id);
-        console.log('[getMatchingInterns] First intern InternDocuments:', interns[0].InternDocuments);
-      }
+      console.log('[getMatchingInterns] ✅ Basic query succeeded, found', interns.length, 'interns');
     } catch (queryErr) {
-      console.error('[getMatchingInterns] ❌ Query failed:', queryErr.message);
-      console.error('[getMatchingInterns] ❌ Full error:', queryErr);
+      console.error('[getMatchingInterns] ❌ Basic query failed:', queryErr.message);
       return res.status(500).json({ 
         message: 'Failed to fetch interns',
         error: process.env.NODE_ENV === 'development' ? queryErr.message : undefined
       });
     }
+
+    // Step 1b: Separately fetch documents for these interns
+    console.log('[getMatchingInterns] Step 1️⃣b: Fetching documents for interns...');
+    const internIds = interns.map(i => i.id);
+    let allDocuments = [];
+    try {
+      if (internIds.length > 0) {
+        allDocuments = await InternDocuments.findAll({
+          where: {
+            intern_id: { [require('sequelize').Op.in]: internIds }
+          },
+          attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path', 'file_mime_type', 'uploaded_date', 'status', 'remarks'],
+        });
+        console.log('[getMatchingInterns] ✅ Found', allDocuments.length, 'documents total');
+      }
+    } catch (docErr) {
+      console.error('[getMatchingInterns] ⚠️  Failed to fetch documents:', docErr.message);
+      console.error('[getMatchingInterns] ⚠️  Continuing without documents');
+      // Continue without documents - not critical
+    }
+
+    // Map documents to interns
+    const documentsByInternId = {};
+    allDocuments.forEach(doc => {
+      if (!documentsByInternId[doc.intern_id]) {
+        documentsByInternId[doc.intern_id] = [];
+      }
+      documentsByInternId[doc.intern_id].push(doc);
+    });
+
+    console.log('[getMatchingInterns] Mapped documents by intern ID:', Object.keys(documentsByInternId).length, 'interns have documents');
 
     // Step 2: Filter by yearSection in JavaScript
     console.log('[getMatchingInterns] Step 2️⃣ : Filtering by yearSection');
@@ -60,33 +78,23 @@ exports.getMatchingInterns = async (req, res) => {
       console.log('[getMatchingInterns] Filtered from', interns.length, 'to', filteredInterns.length, 'interns');
     }
 
-    // Step 3: Transform documents
-    console.log('[getMatchingInterns] Step 3️⃣ : Transforming data');
+    // Step 3: Transform documents - attach fetched documents to interns
+    console.log('[getMatchingInterns] Step 3️⃣ : Transforming data and attaching documents');
     const transformedInterns = filteredInterns.map((intern) => {
       const internData = intern.toJSON ? intern.toJSON() : intern;
       
-      console.log(`[getMatchingInterns] Intern ${intern.id} data:`, {
-        id: intern.id,
-        user_id: intern.user_id,
-        program: intern.program,
-        year_section: intern.year_section,
-        hasInternDocuments: !!internData.InternDocuments,
-        InternDocumentsCount: Array.isArray(internData.InternDocuments) ? internData.InternDocuments.length : 0,
-        InternDocumentsData: internData.InternDocuments
-      });
+      // Attach documents from the separately-fetched map
+      const internDocuments = documentsByInternId[intern.id] || [];
       
-      // Return documents as-is instead of aggregating
-      if (Array.isArray(internData.InternDocuments) && internData.InternDocuments.length > 0) {
-        internData.InternDocuments.forEach((doc) => {
-          console.log(`[getMatchingInterns]   - Document: id=${doc.id}, type=${doc.document_type}, file_name=${doc.file_name}, file_path=${doc.file_path}`);
-        });
-      } else {
-        console.log(`[getMatchingInterns] ⚠️  Intern ${intern.id} has NO documents`);
-      }
+      console.log(`[getMatchingInterns] Intern ${intern.id}:`, {
+        id: intern.id,
+        documentCount: internDocuments.length,
+        documents: internDocuments.length > 0 ? internDocuments.map(d => ({ type: d.document_type, file: d.file_name })) : []
+      });
       
       return {
         ...internData,
-        InternDocuments: Array.isArray(internData.InternDocuments) ? internData.InternDocuments : [],
+        InternDocuments: internDocuments,
       };
     });
 
