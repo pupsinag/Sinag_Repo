@@ -464,7 +464,7 @@ async function downloadInternDoc(req, res) {
     const user = req.user;
 
     console.log('\n\n🔍 [downloadInternDoc] ========== DOWNLOAD REQUEST ==========');
-    console.log('[downloadInternDoc] User:', { id: user.id, role: user.role, program: user.program });
+    console.log('[downloadInternDoc] User:', { id: user.id, role: user.role, program: user.program, yearSection: user.yearSection });
     console.log('[downloadInternDoc] Requested:', { internId, documentType });
 
     // Verify user is adviser, coordinator, or superadmin

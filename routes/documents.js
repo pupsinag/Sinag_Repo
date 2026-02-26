@@ -49,7 +49,6 @@ router.get('/intern-docs/me', getInternDocuments);
 router.get('/adviser/intern-docs/:internId', getAdviserInternDocuments);
 
 // Download specific intern document (for adviser/admin)
-// Note: Authentication via cookie - browser automatically sends it with links
 router.get('/intern-docs/download/:internId/:documentType', downloadInternDoc);
 
 // Validate if intern document file exists
