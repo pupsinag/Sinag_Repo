@@ -443,9 +443,10 @@ exports.addIntern = async (req, res, next) => {
       forcePasswordChange: true,
     });
 
-    // 📄 CREATE INTERN RECORD (also store yearSection)
+    // 📄 CREATE INTERN RECORD (also store yearSection and adviser_id)
     await Intern.create({
       user_id: user.id,
+      adviser_id: req.user.id, // ✅ Assign to the creating adviser
       program,
       year_section: adviser.yearSection, // Inherit from adviser
       status: 'Pending',
