@@ -139,6 +139,14 @@ if (adviserListRoute) app.use('/api/reports', adviserListRoute);
 const internEvalReportRoute = loadRoute('./routes/internEvaluationReport', 'internEvaluationReport');
 if (internEvalReportRoute) app.use('/api/reports', internEvalReportRoute);
 
+const reportsRoute = loadRoute(path.join(__dirname, 'routes', 'reports.js'), 'reports');
+if (reportsRoute) {
+  console.log('[ROUTE] /api/reports loaded and registered');
+  app.use('/api/reports', reportsRoute);
+} else {
+  console.warn('[ROUTE] /api/reports NOT loaded!');
+}
+
 const forgotPasswordRoute = loadRoute('./routes/forgotPasswordRoutes', 'forgotPasswordRoutes');
 if (forgotPasswordRoute) app.use('/api/forgot-password', forgotPasswordRoute);
 

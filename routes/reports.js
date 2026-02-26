@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const authMiddleware = require('../middleware/authMiddleware');
 const internToSupervisorEvaluationSummaryController = require('../controllers/internToSupervisorEvaluationSummaryController');
 const internAssignedToHTEController = require('../controllers/internAssignedToHTEController');
 const internEvaluationReportController = require('../controllers/internEvaluationReportController');
@@ -39,7 +40,7 @@ router.get('/advisers', async (req, res, next) => {
 });
 
 // Get intern submitted documents with cascading logic
-router.post('/intern-documents', async (req, res, next) => {
+router.post('/intern-documents', authMiddleware(['adviser', 'coordinator']), async (req, res, next) => {
   try {
     await generateInternSubmittedDocuments(req, res);
   } catch (error) {
