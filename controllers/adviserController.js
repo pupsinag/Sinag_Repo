@@ -119,24 +119,17 @@ exports.getMatchingInterns = async (req, res) => {
       });
       
       // Transform documents array into object organized by document_type
-      // Frontend expects: { consent_form: { download_url: "..." }, ... }
+      // Return URLs as simple strings - the deployed frontend expects this
       const documentsObject = {};
       internDocumentsArray.forEach(doc => {
         const docType = doc.document_type || 'unknown';
-        // Return object with download_url using the /uploads path
-        // Frontend has: const file = (doc) => doc?.download_url
-        documentsObject[docType] = {
-          download_url: `/uploads/${doc.file_path}`,  // Frontend expects this property
-          file_name: doc.file_name,
-          file_mime_type: doc.file_mime_type,
-          uploaded_date: doc.uploaded_date,
-          status: doc.status,
-        };
+        // Return just the /uploads/ URL string that frontend will use directly in href
+        documentsObject[docType] = `/uploads/${doc.file_path}`;
       });
       
       return {
         ...internData,
-        InternDocuments: [documentsObject],  // Frontend expects array with single object
+        InternDocuments: [documentsObject],  // { consent_form: "/uploads/...", resume: "/uploads/...", ... }
       };
     });
 
