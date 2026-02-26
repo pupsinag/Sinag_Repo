@@ -566,28 +566,20 @@ exports.deleteIntern = async (req, res, next) => {
     const intern = await Intern.findByPk(req.params.id);
     if (!intern) return res.status(404).json({ message: 'Intern not found' });
 
-    // ✅ CRITICAL: Verify adviser access - can only delete assigned interns
+    // ✅ CRITICAL: Verify adviser access - can only delete their assigned interns
     if (req.user.role === 'adviser') {
-      const adviserProgram = req.user.program ? req.user.program.trim().toUpperCase() : '';
-      const adviserYearSection = req.user.yearSection ? req.user.yearSection.trim().toUpperCase() : '';
-      const internProgram = intern.program ? intern.program.trim().toUpperCase() : '';
-      const internYearSection = intern.year_section ? intern.year_section.trim().toUpperCase() : '';
-      
       console.log('[deleteIntern] Adviser access check:', {
-        adviserProgram,
-        adviserYearSection,
-        internProgram,
-        internYearSection,
+        adviser_id: req.user.id,
+        intern_adviser_id: intern.adviser_id,
       });
       
-      if (adviserProgram !== internProgram || adviserYearSection !== internYearSection) {
+      // ✅ Check if the logged-in adviser is the assigned adviser for this intern
+      if (req.user.id !== intern.adviser_id) {
         return res.status(403).json({ 
-          message: 'Forbidden: You can only delete interns from your program and year/section',
+          message: 'Forbidden: You can only delete interns that are assigned to you',
           debug: {
-            adviserProgram: adviserProgram || '(empty/null)',
-            adviserYearSection: adviserYearSection || '(empty/null)',
-            internProgram: internProgram || '(empty/null)',
-            internYearSection: internYearSection || '(empty/null)',
+            your_id: req.user.id,
+            intern_adviser_id: intern.adviser_id,
           }
         });
       }
