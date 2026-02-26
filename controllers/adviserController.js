@@ -119,17 +119,17 @@ exports.getMatchingInterns = async (req, res) => {
       });
       
       // Transform documents array into object organized by document_type
-      // Return just the file_path - frontend will prepend /uploads/ to it
-      // This works because we have a /uploads/:filename endpoint that serves from the database
+      // Return API download URLs that serve from the database with inline headers
       const documentsObject = {};
       internDocumentsArray.forEach(doc => {
         const docType = doc.document_type || 'unknown';
-        documentsObject[docType] = doc.file_path;  // Just return the filename
+        // Return direct API download URL (uses downloadInternDoc endpoint with inline header)
+        documentsObject[docType] = `/api/intern-docs/download/${intern.id}/${docType}`;
       });
       
       return {
         ...internData,
-        InternDocuments: [documentsObject],  // Frontend expects array with single object containing download URLs as strings
+        InternDocuments: [documentsObject],  // Frontend gets API URLs directly
       };
     });
 
