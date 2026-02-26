@@ -79,6 +79,7 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
       const internIds = filteredInterns.map(i => i.id);
       const allDocs = await InternDocuments.findAll({
         where: { intern_id: internIds },
+        attributes: { exclude: ['file_content'] }, // Exclude BLOB to prevent memory issues
         raw: true,
       });
       // Build map to accumulate ALL documents for each intern (not just the last one)

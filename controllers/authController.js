@@ -640,6 +640,7 @@ exports.getInterns = async (req, res) => {
           model: InternDocuments,
           as: 'InternDocuments',
           required: false,
+          attributes: { exclude: ['file_content'] }, // Exclude BLOB to prevent memory issues
         },
         {
           model: Company,

@@ -30,7 +30,11 @@ exports.getMatchingInterns = async (req, res) => {
       include: [
         { model: require('../models').User, as: 'User' },
         { model: require('../models').Company, as: 'company' },
-        { model: require('../models').InternDocuments, as: 'InternDocuments' },
+        { 
+          model: require('../models').InternDocuments, 
+          as: 'InternDocuments',
+          attributes: { exclude: ['file_content'] } // Exclude BLOB to prevent memory issues
+        },
         { model: require('../models').Supervisor, as: 'Supervisor' },
       ],
     });

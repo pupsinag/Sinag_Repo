@@ -235,6 +235,7 @@ exports.getInternsForAdviser = async (req, res) => {
       console.log('[getInternsForAdviser] Intern IDs to fetch documents for:', internIdsList.join(', '));
       const allDocs = await require('../models').InternDocuments.findAll({
         where: { intern_id: internIdsList },
+        attributes: { exclude: ['file_content'] }, // Exclude BLOB to prevent memory issues
         raw: true,
       });
       console.log(`[getInternsForAdviser] Step 5 COMPLETE: Found ${allDocs.length} documents`);
