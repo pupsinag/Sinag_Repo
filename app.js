@@ -125,8 +125,13 @@ if (hteListRoute) app.use('/api/reports', hteListRoute);
 const internAssignedRoute = loadRoute('./routes/internAssignedToHTE', 'internAssignedToHTE');
 if (internAssignedRoute) app.use('/api/reports', internAssignedRoute);
 
-const internSubmittedRoute = loadRoute('./routes/internSubmittedDocuments', 'internSubmittedDocuments');
-if (internSubmittedRoute) app.use('/api/reports', internSubmittedRoute);
+const internSubmittedRoute = loadRoute(path.join(__dirname, 'routes', 'internSubmittedDocuments.js'), 'internSubmittedDocuments');
+if (internSubmittedRoute) {
+  console.log('[ROUTE] /api/reports/intern-documents loaded and registered');
+  app.use('/api/reports', internSubmittedRoute);
+} else {
+  console.error('[ERROR] Failed to load internSubmittedDocuments route!');
+}
 
 const adviserListRoute = loadRoute('./routes/adviserList', 'adviserList');
 if (adviserListRoute) app.use('/api/reports', adviserListRoute);
