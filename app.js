@@ -64,142 +64,119 @@ app.use('/uploads', async (req, res, next) => {
     console.log('[/uploads middleware] Requested filename:', filename);
 
     // Try to find file in database first
-    const { InternDocuments } = require('./models');
-    
-    const doc = await InternDocuments.findOne({
-      where: { file_path: filename },
-    });
+    try {
+      const { InternDocuments } = require('./models');
+      const doc = await InternDocuments.findOne({
+        where: { file_path: filename },
+      });
 
-    if (doc && doc.file_content && doc.file_content.length > 0) {
-      console.log('[/uploads middleware] ✅ Found in database:', filename);
-      
-      // Always serve with Content-Disposition: inline to prevent downloads
-      // For files that can't be displayed inline (like .docx), provide a download link instead
-      const isPDF = filename.toLowerCase().endsWith('.pdf');
-      const isImage = filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/i);
-      const isDocumentFile = filename.toLowerCase().match(/\.(docx|doc|xlsx|xls|txt|ppt|pptx)$/i);
-      
-      if (isPDF || isImage || isDocumentFile) {
-        // Serve as HTML page (with embedded content or link)
-        const base64Content = doc.file_content.toString('base64');
-        const mimeType = doc.file_mime_type || 'application/octet-stream';
+      if (doc && doc.file_content && doc.file_content.length > 0) {
+        console.log('[/uploads middleware] ✅ Found in database:', filename);
         
-        let viewerHTML;
+        // Always serve with Content-Disposition: inline to prevent downloads
+        // For files that can't be displayed inline (like .docx), provide a download link instead
+        const isPDF = filename.toLowerCase().endsWith('.pdf');
+        const isImage = filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/i);
+        const isDocumentFile = filename.toLowerCase().match(/\.(docx|doc|xlsx|xls|txt|ppt|pptx)$/i);
         
-        if (isPDF) {
-          // PDF can be embedded
-          viewerHTML = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <title>${doc.file_name}</title>
-              <style>
-                body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-                .toolbar { background: #333; color: white; padding: 12px 20px; display: flex; align-items: center; gap: 15px; }
-                .toolbar span { flex: 1; font-weight: bold; }
-                .toolbar button { padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
-                .toolbar button:hover { background: #0052a3; }
-                #viewer { width: 100%; height: calc(100vh - 50px); }
-              </style>
-            </head>
-            <body>
-              <div class="toolbar">
-                <span>${doc.file_name}</span>
-                <button onclick="downloadFile()">⬇️ Download</button>
-              </div>
-              <embed id="viewer" src="data:application/pdf;base64,${base64Content}" type="application/pdf" />
-              <script>
-                function downloadFile() {
-                  const link = document.createElement('a');
-                  link.href = 'data:application/pdf;base64,${base64Content}';
-                  link.download = '${doc.file_name}';
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                }
-              </script>
-            </body>
-            </html>
-          `;
-        } else if (isImage) {
-          // Image can be embedded
-          viewerHTML = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <title>${doc.file_name}</title>
-              <style>
-                body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #f0f0f0; }
-                .toolbar { background: #333; color: white; padding: 12px 20px; display: flex; align-items: center; gap: 15px; }
-                .toolbar span { flex: 1; font-weight: bold; }
-                .toolbar button { padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
-                .toolbar button:hover { background: #0052a3; }
-                .container { padding: 20px; text-align: center; }
-                img { max-width: 100%; max-height: 80vh; object-fit: contain; }
-              </style>
-            </head>
-            <body>
-              <div class="toolbar">
-                <span>${doc.file_name}</span>
-                <button onclick="downloadFile()">⬇️ Download</button>
-              </div>
-              <div class="container">
-                <img src="data:${mimeType};base64,${base64Content}" />
-              </div>
-              <script>
-                function downloadFile() {
-                  const link = document.createElement('a');
-                  link.href = 'data:${mimeType};base64,${base64Content}';
-                  link.download = '${doc.file_name}';
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                }
-              </script>
-            </body>
-            </html>
-          `;
-        } else if (isDocumentFile) {
-          // Document files (Word, Excel, etc) - show preview link and download button
-          viewerHTML = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <title>${doc.file_name}</title>
-              <style>
-                body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #f5f5f5; }
-                .toolbar { background: #333; color: white; padding: 12px 20px; display: flex; align-items: center; gap: 15px; }
-                .toolbar span { flex: 1; font-weight: bold; }
-                .toolbar button { padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
-                .toolbar button:hover { background: #0052a3; }
-                .container { padding: 40px 20px; text-align: center; max-width: 600px; margin: 0 auto; }
-                .file-info { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-                .icon { font-size: 48px; margin-bottom: 20px; }
-                h1 { margin: 0 0 10px 0; color: #333; }
-                p { color: #666; margin: 0 0 30px 0; }
-                .button-group { display: flex; gap: 10px; justify-content: center; }
-                a, button { padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; font-size: 14px; font-weight: bold; }
-                .btn-primary { background: #0066cc; color: white; }
-                .btn-primary:hover { background: #0052a3; }
-                .btn-secondary { background: #e0e0e0; color: #333; }
-                .btn-secondary:hover { background: #d0d0d0; }
-              </style>
-            </head>
-            <body>
-              <div class="toolbar">
-                <span>${doc.file_name}</span>
-                <button onclick="downloadFile()">⬇️ Download</button>
-              </div>
-              <div class="container">
-                <div class="file-info">
-                  <div class="icon">📄</div>
-                  <h1>${doc.file_name}</h1>
-                  <p>This document cannot be previewed in the browser.</p>
-                  <p>Click Download to view the file on your computer.</p>
-                  <div class="button-group">
-                    <button class="btn-primary" onclick="downloadFile()">⬇️ Download</button>
-                    <button class="btn-secondary" onclick="window.history.back()">← Back</button>
-                  </div>
+        if (isPDF || isImage || isDocumentFile) {
+          // Serve as HTML page (with embedded content or link)
+          const base64Content = doc.file_content.toString('base64');
+          const mimeType = doc.file_mime_type || 'application/octet-stream';
+          
+          let viewerHTML;
+          
+          if (isPDF) {
+            // PDF can be embedded
+            viewerHTML = `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <title>${doc.file_name}</title>
+                <style>
+                  body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+                  .toolbar { background: #333; color: white; padding: 12px 20px; display: flex; align-items: center; gap: 15px; }
+                  .toolbar span { flex: 1; font-weight: bold; }
+                  .toolbar button { padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
+                </style>
+              </head>
+              <body>
+                <div class="toolbar">
+                  <span>${doc.file_name}</span>
+                  <button onclick="downloadFile()">⬇️ Download</button>
+                  <button onclick="window.history.back()">← Back</button>
+                </div>
+                <embed src="data:${mimeType};base64,${base64Content}" type="${mimeType}" width="100%" height="100%">
+                <script>
+                  function downloadFile() {
+                    const link = document.createElement('a');
+                    link.href = 'data:${mimeType};base64,${base64Content}';
+                    link.download = '${doc.file_name}';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }
+                </script>
+              </body>
+              </html>
+            `;
+          } else if (isImage) {
+            // Image can be embedded
+            viewerHTML = `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <title>${doc.file_name}</title>
+                <style>
+                  body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+                  .toolbar { background: #333; color: white; padding: 12px 20px; display: flex; align-items: center; gap: 15px; }
+                  .toolbar span { flex: 1; font-weight: bold; }
+                  .toolbar button { padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
+                  .container { display: flex; justify-content: center; align-items: center; min-height: calc(100vh - 50px); }
+                  .container img { max-width: 90%; max-height: 90vh; object-fit: contain; }
+                </style>
+              </head>
+              <body>
+                <div class="toolbar">
+                  <span>${doc.file_name}</span>
+                  <button onclick="downloadFile()">⬇️ Download</button>
+                  <button onclick="window.history.back()">← Back</button>
+                </div>
+                <div class="container">
+                  <img src="data:${mimeType};base64,${base64Content}" alt="${doc.file_name}">
+                </div>
+                <script>
+                  function downloadFile() {
+                    const link = document.createElement('a');
+                    link.href = 'data:${mimeType};base64,${base64Content}';
+                    link.download = '${doc.file_name}';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }
+                </script>
+              </body>
+              </html>
+            `;
+          } else {
+            // Document file - can't preview inline
+            viewerHTML = `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <title>${doc.file_name}</title>
+                <style>
+                  body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+                  .toolbar { background: #333; color: white; padding: 12px 20px; display: flex; align-items: center; gap: 15px; }
+                  .toolbar span { flex: 1; font-weight: bold; }
+                  .toolbar button { padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
+                </style>
+              </head>
+              <body>
+                <div class="toolbar">
+                  <span>${doc.file_name}</span>
+                  <button onclick="downloadFile()">⬇️ Download</button>
+                  <button onclick="window.history.back()">← Back</button>
                 </div>
               </div>
               <script>
@@ -215,26 +192,29 @@ app.use('/uploads', async (req, res, next) => {
             </body>
             </html>
           `;
+          }
+          
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.setHeader('Content-Disposition', 'inline');
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          
+          return res.send(viewerHTML);
         }
         
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        // For other file types, serve raw with inline
+        const mimeType = doc.file_mime_type || 'application/octet-stream';
+        res.setHeader('Content-Type', mimeType);
         res.setHeader('Content-Disposition', 'inline');
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Content-Length', doc.file_content.length);
+        res.setHeader('Cache-Control', 'public, max-age=3600');
         
-        return res.send(viewerHTML);
+        return res.send(doc.file_content);
       }
-      
-      // For other file types, serve raw with inline
-      const mimeType = doc.file_mime_type || 'application/octet-stream';
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', 'inline');
-      res.setHeader('Content-Length', doc.file_content.length);
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      
-      return res.send(doc.file_content);
+    } catch (dbErr) {
+      console.log('[/uploads middleware] Database lookup failed, trying filesystem:', dbErr.message);
     }
-
-    console.log('[/uploads middleware] Not in database, trying filesystem...');
+    
+    console.log('[/uploads middleware] Not in database, falling back to express.static...');
     // Not in database, fall through to static file serving
     next();
   } catch (err) {
@@ -243,198 +223,8 @@ app.use('/uploads', async (req, res, next) => {
   }
 });
 
-// Fallback: Custom middleware for filesystem files (PDF/images/documents as HTML viewers)
-app.use('/uploads', async (req, res, next) => {
-  try {
-    const filename = req.path.replace(/^\//, '');
-    if (!filename) return next();
-    
-    const isPDF = filename.toLowerCase().endsWith('.pdf');
-    const isImage = filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/i);
-    const isDocumentFile = filename.toLowerCase().match(/\.(docx|doc|xlsx|xls|txt|ppt|pptx)$/i);
-    
-    if (!isPDF && !isImage && !isDocumentFile) {
-      // Not a supported file type, let express.static handle it
-      return next();
-    }
-    
-    // Try to read file from filesystem
-    const fs = require('fs');
-    const filePath = path.join(__dirname, 'uploads', filename);
-    
-    try {
-      const fileContent = fs.readFileSync(filePath);
-      const base64Content = fileContent.toString('base64');
-      
-      let mimeType = 'application/octet-stream';
-      if (isPDF) {
-        mimeType = 'application/pdf';
-      } else if (filename.match(/\.jpg$/i) || filename.match(/\.jpeg$/i)) {
-        mimeType = 'image/jpeg';
-      } else if (filename.match(/\.png$/i)) {
-        mimeType = 'image/png';
-      } else if (filename.match(/\.gif$/i)) {
-        mimeType = 'image/gif';
-      } else if (filename.match(/\.webp$/i)) {
-        mimeType = 'image/webp';
-      } else if (filename.match(/\.docx$/i)) {
-        mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      } else if (filename.match(/\.doc$/i)) {
-        mimeType = 'application/msword';
-      } else if (filename.match(/\.xlsx$/i)) {
-        mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      } else if (filename.match(/\.xls$/i)) {
-        mimeType = 'application/vnd.ms-excel';
-      } else if (filename.match(/\.txt$/i)) {
-        mimeType = 'text/plain';
-      }
-      
-      let viewerHTML;
-      
-      if (isPDF) {
-        viewerHTML = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>${filename}</title>
-            <style>
-              body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-              .toolbar { background: #333; color: white; padding: 12px 20px; display: flex; align-items: center; gap: 15px; }
-              .toolbar span { flex: 1; font-weight: bold; }
-              .toolbar button { padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
-              .toolbar button:hover { background: #0052a3; }
-              #viewer { width: 100%; height: calc(100vh - 50px); }
-            </style>
-          </head>
-          <body>
-            <div class="toolbar">
-              <span>${filename}</span>
-              <button onclick="downloadFile()">⬇️ Download</button>
-            </div>
-            <embed id="viewer" src="data:application/pdf;base64,${base64Content}" type="application/pdf" />
-            <script>
-              function downloadFile() {
-                const link = document.createElement('a');
-                link.href = 'data:application/pdf;base64,${base64Content}';
-                link.download = '${filename}';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              }
-            </script>
-          </body>
-          </html>
-        `;
-      } else if (isImage) {
-        viewerHTML = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>${filename}</title>
-            <style>
-              body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #f0f0f0; }
-              .toolbar { background: #333; color: white; padding: 12px 20px; display: flex; align-items: center; gap: 15px; }
-              .toolbar span { flex: 1; font-weight: bold; }
-              .toolbar button { padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
-              .toolbar button:hover { background: #0052a3; }
-              .container { padding: 20px; text-align: center; }
-              img { max-width: 100%; max-height: 80vh; object-fit: contain; }
-            </style>
-          </head>
-          <body>
-            <div class="toolbar">
-              <span>${filename}</span>
-              <button onclick="downloadFile()">⬇️ Download</button>
-            </div>
-            <div class="container">
-              <img src="data:${mimeType};base64,${base64Content}" />
-            </div>
-            <script>
-              function downloadFile() {
-                const link = document.createElement('a');
-                link.href = 'data:${mimeType};base64,${base64Content}';
-                link.download = '${filename}';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              }
-            </script>
-          </body>
-          </html>
-        `;
-      } else if (isDocumentFile) {
-        viewerHTML = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>${filename}</title>
-            <style>
-              body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #f5f5f5; }
-              .toolbar { background: #333; color: white; padding: 12px 20px; display: flex; align-items: center; gap: 15px; }
-              .toolbar span { flex: 1; font-weight: bold; }
-              .toolbar button { padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
-              .toolbar button:hover { background: #0052a3; }
-              .container { padding: 40px 20px; text-align: center; max-width: 600px; margin: 0 auto; }
-              .file-info { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-              .icon { font-size: 48px; margin-bottom: 20px; }
-              h1 { margin: 0 0 10px 0; color: #333; }
-              p { color: #666; margin: 0 0 30px 0; }
-              .button-group { display: flex; gap: 10px; justify-content: center; }
-              button { padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; font-size: 14px; font-weight: bold; }
-              .btn-primary { background: #0066cc; color: white; }
-              .btn-primary:hover { background: #0052a3; }
-              .btn-secondary { background: #e0e0e0; color: #333; }
-              .btn-secondary:hover { background: #d0d0d0; }
-            </style>
-          </head>
-          <body>
-            <div class="toolbar">
-              <span>${filename}</span>
-              <button onclick="downloadFile()">⬇️ Download</button>
-            </div>
-            <div class="container">
-              <div class="file-info">
-                <div class="icon">📄</div>
-                <h1>${filename}</h1>
-                <p>This document cannot be previewed in the browser.</p>
-                <p>Click Download to view the file on your computer.</p>
-                <div class="button-group">
-                  <button class="btn-primary" onclick="downloadFile()">⬇️ Download</button>
-                  <button class="btn-secondary" onclick="window.history.back()">← Back</button>
-                </div>
-              </div>
-            </div>
-            <script>
-              function downloadFile() {
-                const link = document.createElement('a');
-                link.href = 'data:${mimeType};base64,${base64Content}';
-                link.download = '${filename}';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              }
-            </script>
-          </body>
-          </html>
-        `;
-      }
-      
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.setHeader('Content-Disposition', 'inline');
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      
-      return res.send(viewerHTML);
-    } catch (fileErr) {
-      // File not found in filesystem, let express.static handle 404
-      return next();
-    }
-  } catch (err) {
-    console.error('[/uploads fallback] Error:', err.message);
-    next();
-  }
-});
-
-// Express.static fallback for other file types
+// Database-first serving for intern documents (removed duplicate code - see loop)
+// Fallback: Plain express.static for files not in database
 app.use(
   '/uploads',
   express.static(path.join(__dirname, 'uploads'), {
