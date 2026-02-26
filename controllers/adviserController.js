@@ -1,3 +1,5 @@
+const { Intern, User, Company, InternDocuments, Supervisor } = require('../models');
+
 // ADVISER – GET INTERNS MATCHING PROGRAM AND YEARSECTION
 exports.getMatchingInterns = async (req, res) => {
   try {
@@ -12,20 +14,6 @@ exports.getMatchingInterns = async (req, res) => {
 
     // Step 1: Fetch interns for program
     console.log('[getMatchingInterns] Step 1️⃣ : Querying interns for program:', program);
-    
-    const Intern = require('../models').Intern;
-    const User = require('../models').User;
-    const Company = require('../models').Company;
-    const InternDocuments = require('../models').InternDocuments;
-    const Supervisor = require('../models').Supervisor;
-    
-    console.log('[getMatchingInterns] Models loaded:', { 
-      Intern: !!Intern, 
-      User: !!User, 
-      Company: !!Company,
-      InternDocuments: !!InternDocuments,
-      Supervisor: !!Supervisor
-    });
 
     let interns;
     try {
@@ -121,7 +109,7 @@ exports.getMatchingInterns = async (req, res) => {
     });
   }
 };
-const { Intern, User } = require('../models');
+
 const { Op } = require('sequelize');
 
 /* =================================================
