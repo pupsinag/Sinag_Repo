@@ -71,6 +71,13 @@ module.exports = (sequelize, DataTypes) => {
         comment: 'Array of filenames for uploaded photos (up to 5)',
       },
 
+      photo_content: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: null,
+        comment: 'Array of image binary data stored as base64 strings for persistence across redeployments',
+      },
+
       supervisor_status: {
         type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
         defaultValue: 'Pending',

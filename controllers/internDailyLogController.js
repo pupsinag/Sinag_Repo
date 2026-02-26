@@ -117,15 +117,27 @@ exports.createDailyLog = async (req, res) => {
        HANDLE PHOTO UPLOADS
     ========================= */
     let photo_paths = null;
+    let photo_content = null;
 
     if (req.files && req.files.length > 0) {
       // ✅ Store array of filenames
       photo_paths = req.files.map(f => f.filename);
+      
+      // ✅ Store actual image data as base64 for persistence
+      photo_content = req.files.map(f => ({
+        filename: f.filename,
+        mimetype: f.mimetype,
+        data: f.buffer.toString('base64'), // Convert to base64 string for JSON storage
+        size: f.size,
+      }));
+      
       console.log('✅ Photos saved successfully');
       req.files.forEach((file, index) => {
         console.log(`   File ${index + 1}:`, file.filename);
         console.log(`   Size:`, (file.size / 1024).toFixed(2), 'KB');
+        console.log(`   Type:`, file.mimetype);
       });
+      console.log('✅ Photo data stored in database for persistence');
     } else {
       console.log('ℹ️ No photos attached (optional field)');
     }
@@ -145,7 +157,8 @@ exports.createDailyLog = async (req, res) => {
         tasks_accomplished,
         skills_enhanced: skills_enhanced || null,
         learning_applied: learning_applied || null,
-        photo_path: photo_paths, // ✅ Save array of photo paths to database
+        photo_path: photo_paths, // ✅ Save array of photo filenames to database
+        photo_content: photo_content, // ✅ Save actual image data for persistence
       });
     } catch (err) {
       // If new schema fails, try legacy schema insert
