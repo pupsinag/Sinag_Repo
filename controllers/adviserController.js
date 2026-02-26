@@ -39,12 +39,17 @@ exports.getMatchingInterns = async (req, res) => {
     // Step 1b: Separately fetch documents for these interns
     console.log('[getMatchingInterns] Step 1️⃣b: Fetching documents for interns...');
     const internIds = interns.map(i => i.id);
-    console.log('[getMatchingInterns] Intern IDs to query for documents:', internIds);
+    console.log('[getMatchingInterns] 🔍 Intern IDs returned from query:', internIds);
+    console.log('[getMatchingInterns] 🔍 Interns with details:');
+    interns.forEach(i => {
+      console.log(`  - ID ${i.id}: user_id=${i.user_id}, program=${i.program}, year_section=${i.year_section}`);
+    });
     
     let allDocuments = [];
     try {
       if (internIds.length > 0) {
-        console.log('[getMatchingInterns] Querying InternDocuments with Op.in for ids:', internIds);
+        console.log('[getMatchingInterns] 📋 Querying InternDocuments table for intern_ids:', internIds);
+        console.log('[getMatchingInterns] 📋 Query condition: intern_id IN (', internIds.join(','), ')');
         
         allDocuments = await InternDocuments.findAll({
           where: {
@@ -52,17 +57,27 @@ exports.getMatchingInterns = async (req, res) => {
           },
           attributes: ['id', 'intern_id', 'document_type', 'file_name', 'file_path', 'file_mime_type', 'uploaded_date', 'status', 'remarks'],
         });
-        console.log('[getMatchingInterns] ✅ Found', allDocuments.length, 'documents total');
+        
+        console.log('[getMatchingInterns] ✅ Query completed. Found', allDocuments.length, 'documents total');
         
         if (allDocuments.length > 0) {
-          console.log('[getMatchingInterns] First document:', JSON.stringify(allDocuments[0], null, 2));
+          console.log('[getMatchingInterns] 📄 Documents found:');
+          allDocuments.forEach(doc => {
+            console.log(`  - ID ${doc.id}: intern_id=${doc.intern_id}, type=${doc.document_type}, file=${doc.file_name}`);
+          });
+        } else {
+          console.log('[getMatchingInterns] ⚠️  NO documents found matching these intern_ids!');
+          console.log('[getMatchingInterns] ⚠️  This could mean:');
+          console.log('[getMatchingInterns]    1. Documents were not uploaded for these interns');
+          console.log('[getMatchingInterns]    2. Document intern_ids do NOT match intern IDs in interns table');
+          console.log('[getMatchingInterns]    3. Documents are in a different database or table');
         }
       } else {
         console.log('[getMatchingInterns] ⚠️  No intern IDs to query for documents');
       }
     } catch (docErr) {
       console.error('[getMatchingInterns] ❌ Failed to fetch documents:', docErr.message);
-      console.error('[getMatchingInterns] ❌ Full error:', docErr);
+      console.error('[getMatchingInterns] ❌ Stack:', docErr.stack);
       // Continue without documents - not critical
     }
 

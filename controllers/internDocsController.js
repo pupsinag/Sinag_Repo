@@ -137,6 +137,8 @@ async function uploadInternDoc(req, res) {
       status: 'Pending',
     };
 
+    console.log('💾 [SAVE DATA] Saving document with:', docData);
+
     let docs;
     try {
       if (existingDoc) {
