@@ -73,74 +73,12 @@ app.use('/uploads', async (req, res, next) => {
     if (doc && doc.file_content && doc.file_content.length > 0) {
       console.log('[/uploads middleware] ✅ Found in database:', filename);
       
-      // Check file extension to determine how to serve
-      const isImage = filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/i);
-      const isPDF = filename.toLowerCase().endsWith('.pdf');
-      
-      // For images and PDFs, serve HTML viewer page instead of raw file
-      // This bypasses the download attribute on HTML links
-      if (isPDF || isImage) {
-        const viewerHTML = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>${doc.file_name}</title>
-            <style>
-              body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-              #viewer { width: 100%; height: 100vh; }
-              .toolbar { background: #f0f0f0; padding: 10px; border-bottom: 1px solid #ddd; }
-              .toolbar a { margin-right: 10px; padding: 8px 12px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; }
-              .toolbar a:hover { background: #0056b3; }
-            </style>
-          </head>
-          <body>
-            <div class="toolbar">
-              <a href="#" onclick="downloadFile(); return false;">⬇️ Download</a>
-              <span>${doc.file_name}</span>
-            </div>
-            ${isPDF ? `
-              <iframe id="viewer" src="data:application/pdf;base64,${doc.file_content.toString('base64')}" type="application/pdf"></iframe>
-            ` : `
-              <img id="viewer" src="data:${doc.file_mime_type || 'image/jpeg'};base64,${doc.file_content.toString('base64')}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />
-            `}
-            <script>
-              function downloadFile() {
-                const link = document.createElement('a');
-                link.href = 'data:${doc.file_mime_type || 'application/octet-stream'};base64,${doc.file_content.toString('base64')}';
-                link.download = '${doc.file_name}';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              }
-              // Prevent right-click save-as on images
-              document.addEventListener('contextmenu', function(e) {
-                if (e.target.id === 'viewer') {
-                  e.preventDefault();
-                  downloadFile();
-                }
-              });
-            </script>
-          </body>
-          </html>
-        `;
-        
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        
-        console.log('[/uploads middleware] Serving as HTML viewer page');
-        return res.send(viewerHTML);
-      }
-      
-      // For other file types, serve raw with inline disposition
-      let mimeType = doc.file_mime_type || 'application/octet-stream';
+      // Serve from database
+      const mimeType = doc.file_mime_type || 'application/octet-stream';
       res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', 'inline');
+      res.setHeader('Content-Disposition', `inline; filename="${doc.file_name}"`);  // 'inline' = open in browser
       res.setHeader('Content-Length', doc.file_content.length);
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
       
       return res.send(doc.file_content);
     }
@@ -159,20 +97,14 @@ app.use(
   '/uploads',
   express.static(path.join(__dirname, 'uploads'), {
     setHeaders: (res, filePath) => {
-      // Set proper cache and content headers - FORCE inline display
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
+      // Set proper cache and content headers
+      res.setHeader('Cache-Control', 'public, max-age=3600');
 
       if (filePath.endsWith('.pdf')) {
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', 'inline');  // Force inline
+        res.setHeader('Content-Disposition', 'inline');
       } else if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        const ext = filePath.split('.').pop().toLowerCase();
-        res.setHeader('Content-Type', 'image/' + ext);
-        res.setHeader('Content-Disposition', 'inline');  // Force inline
-      } else if (filePath.match(/\.(doc|docx|xls|xlsx|txt)$/i)) {
-        res.setHeader('Content-Disposition', 'inline');  // Force inline for office files
+        res.setHeader('Content-Type', 'image/jpeg');
       }
     },
   }),
