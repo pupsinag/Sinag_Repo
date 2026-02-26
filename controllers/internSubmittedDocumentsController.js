@@ -620,9 +620,30 @@ exports.downloadSubmittedDocument = async (req, res) => {
     }
 
     console.log('[downloadSubmittedDocument] Serving file from disk:', normalizedPath);
-    res.download(normalizedPath, doc.file_name || fileToServe, (err) => {
+    
+    // Determine content type based on file extension for viewing in browser
+    const ext = path.extname(doc.file_name || fileToServe || '').toLowerCase();
+    const contentTypes = {
+      '.pdf': 'application/pdf',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.txt': 'text/plain',
+    };
+    const contentType = contentTypes[ext] || 'application/octet-stream';
+    
+    // Serve inline for viewing in browser tab instead of download
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${doc.file_name || fileToServe}"`);
+    
+    res.sendFile(normalizedPath, (err) => {
       if (err) {
-        console.error('[downloadSubmittedDocument] Error downloading file:', err.message);
+        console.error('[downloadSubmittedDocument] Error serving file:', err.message);
       }
     });
   } catch (err) {

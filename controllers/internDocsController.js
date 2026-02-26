@@ -416,8 +416,9 @@ async function downloadInternDoc(req, res) {
       };
       const contentType = contentTypes[ext] || 'application/octet-stream';
       
+      // Serve inline for viewing in browser tab instead of download
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name || 'document'}"`);
+      res.setHeader('Content-Disposition', `inline; filename="${doc.file_name || 'document'}"`);
       res.setHeader('Content-Length', doc.file_content.length);
       
       return res.send(doc.file_content);
@@ -522,13 +523,31 @@ async function downloadInternDoc(req, res) {
 
     console.log('[downloadInternDoc] Serving file:', normalizedPath);
 
-    // Serve the file
-    res.download(normalizedPath, doc.file_name, (err) => {
+    // Determine content type based on file extension for viewing in browser
+    const ext = path.extname(doc.file_name || '').toLowerCase();
+    const contentTypes = {
+      '.pdf': 'application/pdf',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.txt': 'text/plain',
+    };
+    const contentType = contentTypes[ext] || 'application/octet-stream';
+    
+    // Serve inline for viewing in browser tab instead of download
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${doc.file_name}"`);
+    
+    res.sendFile(normalizedPath, (err) => {
       if (err) {
-        console.error('[downloadInternDoc] Error downloading file:', err.message);
+        console.error('[downloadInternDoc] Error serving file:', err.message);
         if (!res.headersSent) {
-          res.status(500).json({ message: 'Error downloading document' });
-        }
+          res.status(500).json({ message: 'Error serving document' });
       }
     });
   } catch (err) {
