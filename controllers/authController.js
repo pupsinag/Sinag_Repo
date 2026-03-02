@@ -7,6 +7,7 @@ const { User, Intern, Company, InternDocuments } = require('../models');
 const db = require('../models');
 const sendCredentialsEmail = require('../utils/sendCredentialsEmail');
 const sendCredentialUpdateEmail = require('../utils/sendCredentialUpdateEmail');
+const { withDbRetry } = require('../utils/dbRetry');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
@@ -81,14 +82,21 @@ exports.login = async (req, res, next) => {
 
     console.log('🔍 Login attempt:', { email });
 
-    let user = await User.findOne({
-      where: { email: email.toLowerCase() },
-    });
+    // ✅ Wrap critical DB query with retry logic
+    let user = await withDbRetry(
+      () => User.findOne({
+        where: { email: email.toLowerCase() },
+      }),
+      2 // Retry 2 times (3 total attempts)
+    );
 
     if (!user) {
-      user = await User.findOne({
-        where: literal(`LOWER(TRIM(email)) = ${db.sequelize.escape(email)}`),
-      });
+      user = await withDbRetry(
+        () => User.findOne({
+          where: literal(`LOWER(TRIM(email)) = ${db.sequelize.escape(email)}`),
+        }),
+        2
+      );
     }
 
     if (user) {
@@ -117,7 +125,7 @@ exports.login = async (req, res, next) => {
         match = passwordCandidates.some((candidate) => candidate === storedPassword);
         if (match) {
           user.password = await bcrypt.hash(passwordCandidates[0], 10);
-          await user.save();
+          await withDbRetry(() => user.save(), 2);
         }
       }
 

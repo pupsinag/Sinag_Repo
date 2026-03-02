@@ -21,15 +21,15 @@ router.get('/test', (req, res) => {
   res.json({ message: 'auth route working' });
 });
 
-// Apply DB health check to critical endpoints
-router.post('/signup', ensureDBConnection, authController.signup);
-router.post('/login', ensureDBConnection, authController.login);
+// Apply DB health check to critical endpoints (every 30 seconds at most)
+router.post('/signup', ensureDBConnection(30000), authController.signup);
+router.post('/login', ensureDBConnection(30000), authController.login);
 
 /* =========================
    PROTECTED ROUTES
 ========================= */
 router.use(authMiddleware(['superadmin', 'coordinator', 'adviser', 'intern', 'company']));
-router.use(ensureDBConnection);
+router.use(ensureDBConnection(30000)); // Check at most every 30 seconds
 
 /* =========================
    USER PROFILE
