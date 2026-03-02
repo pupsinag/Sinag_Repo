@@ -13,6 +13,18 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT,
     dialect: 'mysql',
     logging: console.log,
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 5000,
+      evict: 5000
+    },
+    dialectOptions: {
+      connectTimeout: 60000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0
+    }
   }
 );
 
@@ -23,9 +35,19 @@ const migrationContent = fs.readFileSync(migrationPath, 'utf8');
 sequelize.query(migrationContent)
   .then(() => {
     console.log('Migration executed successfully!');
-    sequelize.close();
+    // ✅ IMPORTANT: Close connection pool properly
+    return sequelize.close();
+  })
+  .then(() => {
+    console.log('✅ Connection closed');
+    process.exit(0);
   })
   .catch(err => {
     console.error('Error executing migration:', err);
-    sequelize.close();
+    // ✅ IMPORTANT: Close connection even on error
+    sequelize.close().then(() => {
+      process.exit(1);
+    }).catch(() => {
+      process.exit(1);
+    });
   });

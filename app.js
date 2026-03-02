@@ -455,7 +455,8 @@ sequelize
   .then(() => {
     console.log('✅ Database schema updated');
     
-    // Setup connection pool health check every 5 minutes
+    // Setup connection pool health check every 30 seconds (more aggressive)
+    // Catches stale connections before they cause request failures
     setInterval(async () => {
       try {
         await sequelize.authenticate();
@@ -471,7 +472,7 @@ sequelize
           console.error('❌ Failed to recover connection pool:', recoveryError);
         }
       }
-    }, 5 * 60 * 1000); // Every 5 minutes
+    }, 30000); // ✅ Every 30 seconds (was 5 min) — more aggressive for 20s timeout
   })
   .catch((err) => {
     console.error('❌ Database connection failed:', err);
