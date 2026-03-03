@@ -22,10 +22,19 @@ app.use(
   }),
 );
 
-// ✅ CORS Configuration
+// ✅ CORS Configuration - Allow production domain
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'https://pupsinag.com',
+  'http://pupsinag.com',
+  process.env.CORS_ORIGIN // From .env
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -37,6 +46,18 @@ app.options('*', cors());
 
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));
+
+// =========================
+// HEALTH CHECK (NO DATABASE REQUIRED)
+// =========================
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok',
+    message: 'Backend is running',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV
+  });
+});
 
 // =========================
 // STATIC FILES - UPLOADS (BEFORE other routes)
@@ -417,6 +438,8 @@ const addMissingColumns = require('./utils/addMissingColumns');
 let db = null;
 
 async function startServer() {
+  let dbReady = false;
+  
   try {
     console.log('\n📊 Database Configuration:');
     console.log(`   Host: ${process.env.DB_HOST}`);
@@ -428,90 +451,163 @@ async function startServer() {
     console.log('\n🔄 Testing database connection...');
     await sequelize.authenticate();
     console.log('✅ Database authenticated successfully');
+    dbReady = true;
     
     // NOW load models (after database is ready)
     console.log('\n📚 Loading models...');
     db = require('./models');
     console.log('✅ Models loaded');
     
-    // Sync database schema
+    // Sync database schema - but don't fail if sync fails
     console.log('\n🔄 Syncing models with database...');
-    await sequelize.sync({ alter: false });
-    console.log('✅ Models synced');
+    try {
+      await sequelize.sync({ alter: false });
+      console.log('✅ Models synced successfully');
+    } catch (syncErr) {
+      console.warn('⚠️ Model sync warning (continuing anyway):', syncErr.message);
+      // Don't exit - server can still function with unsyncced models
+    }
     
-    // Add missing columns
+    // Add missing columns - but don't fail if this fails
     console.log('\n🔧 Checking for missing columns...');
-    await addMissingColumns();
-    console.log('✅ Database schema verified');
+    try {
+      await addMissingColumns();
+      console.log('✅ Database schema verified');
+    } catch (colErr) {
+      console.warn('⚠️ Column sync warning (continuing anyway):', colErr.message);
+      // Don't exit - server can still function
+    }
     
+  } catch (dbErr) {
+    // Database failed, but continue with server startup
+    console.warn('\n⚠️  Database connection failed at startup:');
+    console.warn('   Error:', dbErr.message);
+    if (dbErr.original) {
+      console.warn('   MySQL Error:', dbErr.original.message);
+    }
+    console.warn('\n💡 Server will start anyway - database-dependent features may fail\n');
+    dbReady = false;
+  }
+  
+  try {
     // Add connection validation middleware BEFORE listening
-    // This ensures every request validates the database connection
+    // Only check on API routes, NOT on static files
     app.use(async (req, res, next) => {
+      // Skip database check for ALL static resources and health endpoints
+      const staticPaths = [
+        '/health',
+        '/favicon',
+        '/uploads',
+        '/assets',
+        '/PUP',
+        '/pup',
+        '.js',
+        '.css',
+        '.png',
+        '.jpg',
+        '.jpeg',
+        '.gif',
+        '.svg',
+        '.ico',
+        '.woff',
+        '.woff2',
+        '.ttf',
+        '.map'
+      ];
+      
+      // Check if request is for a static file
+      const isStatic = staticPaths.some(path => req.path.includes(path));
+      if (isStatic || !req.path.startsWith('/api')) {
+        // Don't check DB for static files or non-API routes
+        return next();
+      }
+      
+      // Only validate DB for API routes
       try {
-        await sequelize.authenticate();
+        if (!dbReady) {
+          // Try to reconnect
+          await sequelize.authenticate();
+          dbReady = true;
+        } else {
+          // Validate still connected
+          await sequelize.authenticate();
+        }
         next();
       } catch (error) {
-        console.warn('⚠️ Connection lost on request, attempting reconnect...');
+        console.warn('⚠️ [API] Connection lost on request, attempting reconnect...');
         try {
           await sequelize.authenticate();
+          dbReady = true;
           next();
         } catch (reconnectError) {
-          console.error('❌ Could not reconnect to database');
+          console.error('❌ [API] Could not reconnect to database');
           return res.status(503).json({ 
             message: 'Database connection unavailable. Please try again in a moment.',
-            error: 'tangina sira ngani'
+            error: 'DB_CONNECTION_FAILED'
           });
         }
       }
     });
     
-    // NOW start the server after everything is ready
+    // NOW start the server - regardless of database status
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`\n✅ BACKEND READY: http://localhost:${PORT}`);
-      console.log('✅ Database connected and models synced');
-      console.log('✅ Frontend served from public/dist\n');
+      if (dbReady) {
+        console.log('✅ Database connected and models synced');
+      } else {
+        console.log('⚠️  Database not connected (will retry)');
+      }
+      console.log('✅ Frontend served from public/dist');
+      console.log('✅ Health check available at /health\n');
     });
     
     // Handle server errors
     server.on('error', (err) => {
       console.error('❌ Server error:', err);
-      process.exit(1);
+      // Don't exit, try to recover
     });
     
     // CRITICAL: Keep-alive ping - prevents MySQL idle timeout
     setInterval(async () => {
-      try {
-        await sequelize.authenticate();
-      } catch (error) {
-        console.warn('⚠️ Keep-alive ping failed, attempting reconnect...');
+      if (!dbReady) {
+        // Try to reconnect
         try {
-          await sequelize.close();
           await sequelize.authenticate();
-          console.log('✅ Database reconnected');
-        } catch (recoveryError) {
-          console.error('❌ Failed to recover database:', recoveryError.message);
+          dbReady = true;
+          console.log('✅ Database reconnected via keep-alive');
+        } catch (e) {
+          // Still not connected
+        }
+      } else {
+        // Keep the connection alive
+        try {
+          await sequelize.authenticate();
+        } catch (error) {
+          console.warn('⚠️ Keep-alive ping failed, attempting reconnect...');
+          try {
+            await sequelize.close();
+            await sequelize.authenticate();
+            console.log('✅ Database reconnected');
+            dbReady = true;
+          } catch (recoveryError) {
+            console.error('❌ Failed to recover database:', recoveryError.message);
+            dbReady = false;
+          }
         }
       }
     }, 5 * 60 * 1000); // Every 5 minutes
     
-  } catch (err) {
+  } catch (serverErr) {
     console.error('\n❌ FAILED TO START SERVER\n');
-    console.error('Error:', err.message);
-    if (err.original) {
-      console.error('MySQL Error:', err.original.message);
-    }
-    console.error('\n⚠️  TROUBLESHOOTING STEPS:');
-    console.error('   1. Is MySQL running on Hostinger?');
-    console.error('   2. Go to hPanel > MySQL Databases');
-    console.error('   3. Check if database status is ACTIVE');
-    console.error('   4. Verify .env file has correct credentials');
-    console.error(`\n   Configured Database: ${process.env.DB_NAME}`);
-    console.error(`   Configured User: ${process.env.DB_USER}`);
-    console.error(`   Configured Host: ${process.env.DB_HOST}`);
-    console.error('\n');
+    console.error('='.repeat(60));
+    console.error('Error Type:', serverErr.constructor.name);
+    console.error('Error Message:', serverErr.message);
+    console.error('Stack Trace:', serverErr.stack);
+    console.error('='.repeat(60));
     process.exit(1);
   }
 }
+
 
 // Start the server
 startServer();
