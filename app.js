@@ -490,65 +490,6 @@ async function startServer() {
   }
   
   try {
-    // Add connection validation middleware BEFORE listening
-    // Only check on API routes, NOT on static files
-    app.use(async (req, res, next) => {
-      // Skip database check for ALL static resources and health endpoints
-      const staticPaths = [
-        '/health',
-        '/favicon',
-        '/uploads',
-        '/assets',
-        '/PUP',
-        '/pup',
-        '.js',
-        '.css',
-        '.png',
-        '.jpg',
-        '.jpeg',
-        '.gif',
-        '.svg',
-        '.ico',
-        '.woff',
-        '.woff2',
-        '.ttf',
-        '.map'
-      ];
-      
-      // Check if request is for a static file
-      const isStatic = staticPaths.some(path => req.path.includes(path));
-      if (isStatic || !req.path.startsWith('/api')) {
-        // Don't check DB for static files or non-API routes
-        return next();
-      }
-      
-      // Only validate DB for API routes
-      try {
-        if (!dbReady) {
-          // Try to reconnect
-          await sequelize.authenticate();
-          dbReady = true;
-        } else {
-          // Validate still connected
-          await sequelize.authenticate();
-        }
-        next();
-      } catch (error) {
-        console.warn('⚠️ [API] Connection lost on request, attempting reconnect...');
-        try {
-          await sequelize.authenticate();
-          dbReady = true;
-          next();
-        } catch (reconnectError) {
-          console.error('❌ [API] Could not reconnect to database');
-          return res.status(503).json({ 
-            message: 'Database connection unavailable. Please try again in a moment.',
-            error: 'DB_CONNECTION_FAILED'
-          });
-        }
-      }
-    });
-    
     // NOW start the server - regardless of database status
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`\n✅ BACKEND READY: http://localhost:${PORT}`);
