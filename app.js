@@ -22,19 +22,10 @@ app.use(
   }),
 );
 
-// ✅ CORS Configuration - Allow production domain
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173',
-  'https://pupsinag.com',
-  'http://pupsinag.com',
-  process.env.CORS_ORIGIN // From .env
-].filter(Boolean);
-
+// ✅ CORS Configuration
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -46,18 +37,6 @@ app.options('*', cors());
 
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));
-
-// =========================
-// HEALTH CHECK (NO DATABASE REQUIRED)
-// =========================
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok',
-    message: 'Backend is running',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV
-  });
-});
 
 // =========================
 // STATIC FILES - UPLOADS (BEFORE other routes)
@@ -438,8 +417,6 @@ const addMissingColumns = require('./utils/addMissingColumns');
 let db = null;
 
 async function startServer() {
-  let dbReady = false;
-  
   try {
     console.log('\n📊 Database Configuration:');
     console.log(`   Host: ${process.env.DB_HOST}`);
@@ -451,137 +428,89 @@ async function startServer() {
     console.log('\n🔄 Testing database connection...');
     await sequelize.authenticate();
     console.log('✅ Database authenticated successfully');
-    dbReady = true;
     
     // NOW load models (after database is ready)
     console.log('\n📚 Loading models...');
     db = require('./models');
     console.log('✅ Models loaded');
     
-    // Sync database schema - but don't fail if sync fails
+    // Sync database schema
     console.log('\n🔄 Syncing models with database...');
-    try {
-      await sequelize.sync({ alter: false });
-      console.log('✅ Models synced successfully');
-    } catch (syncErr) {
-      console.warn('⚠️ Model sync warning (continuing anyway):', syncErr.message);
-      // Don't exit - server can still function with unsyncced models
-    }
+    await sequelize.sync({ alter: false });
+    console.log('✅ Models synced');
     
-    // Add missing columns - but don't fail if this fails
+    // Add missing columns
     console.log('\n🔧 Checking for missing columns...');
-    try {
-      await addMissingColumns();
-      console.log('✅ Database schema verified');
-    } catch (colErr) {
-      console.warn('⚠️ Column sync warning (continuing anyway):', colErr.message);
-      // Don't exit - server can still function
-    }
+    await addMissingColumns();
+    console.log('✅ Database schema verified');
     
-  } catch (dbErr) {
-    // Database failed, but continue with server startup
-    console.warn('\n⚠️  Database connection failed at startup:');
-    console.warn('   Error:', dbErr.message);
-    if (dbErr.original) {
-      console.warn('   MySQL Error:', dbErr.original.message);
-    }
-    console.warn('\n💡 Server will start anyway - database-dependent features may fail\n');
-    dbReady = false;
-  }
-  
-  try {
     // Add connection validation middleware BEFORE listening
     // This ensures every request validates the database connection
     app.use(async (req, res, next) => {
-      // Skip database check for health endpoint
-      if (req.path === '/health') {
-        return next();
-      }
-      
       try {
-        if (!dbReady) {
-          // Try to reconnect
-          await sequelize.authenticate();
-          dbReady = true;
-        } else {
-          // Validate still connected
-          await sequelize.authenticate();
-        }
+        await sequelize.authenticate();
         next();
       } catch (error) {
         console.warn('⚠️ Connection lost on request, attempting reconnect...');
         try {
           await sequelize.authenticate();
-          dbReady = true;
           next();
         } catch (reconnectError) {
           console.error('❌ Could not reconnect to database');
           return res.status(503).json({ 
             message: 'Database connection unavailable. Please try again in a moment.',
-            error: 'DB_CONNECTION_FAILED'
+            error: 'tangina sira ngani'
           });
         }
       }
     });
     
-    // NOW start the server - regardless of database status
+    // NOW start the server after everything is ready
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`\n✅ BACKEND READY: http://localhost:${PORT}`);
-      if (dbReady) {
-        console.log('✅ Database connected and models synced');
-      } else {
-        console.log('⚠️  Database not connected (will retry)');
-      }
-      console.log('✅ Frontend served from public/dist');
-      console.log('✅ Health check available at /health\n');
+      console.log('✅ Database connected and models synced');
+      console.log('✅ Frontend served from public/dist\n');
     });
     
     // Handle server errors
     server.on('error', (err) => {
       console.error('❌ Server error:', err);
-      // Don't exit, try to recover
+      process.exit(1);
     });
     
     // CRITICAL: Keep-alive ping - prevents MySQL idle timeout
     setInterval(async () => {
-      if (!dbReady) {
-        // Try to reconnect
+      try {
+        await sequelize.authenticate();
+      } catch (error) {
+        console.warn('⚠️ Keep-alive ping failed, attempting reconnect...');
         try {
+          await sequelize.close();
           await sequelize.authenticate();
-          dbReady = true;
-          console.log('✅ Database reconnected via keep-alive');
-        } catch (e) {
-          // Still not connected
-        }
-      } else {
-        // Keep the connection alive
-        try {
-          await sequelize.authenticate();
-        } catch (error) {
-          console.warn('⚠️ Keep-alive ping failed, attempting reconnect...');
-          try {
-            await sequelize.close();
-            await sequelize.authenticate();
-            console.log('✅ Database reconnected');
-            dbReady = true;
-          } catch (recoveryError) {
-            console.error('❌ Failed to recover database:', recoveryError.message);
-            dbReady = false;
-          }
+          console.log('✅ Database reconnected');
+        } catch (recoveryError) {
+          console.error('❌ Failed to recover database:', recoveryError.message);
         }
       }
     }, 5 * 60 * 1000); // Every 5 minutes
     
-  } catch (serverErr) {
+  } catch (err) {
     console.error('\n❌ FAILED TO START SERVER\n');
-    console.error('='.repeat(60));
-    console.error('Error Type:', serverErr.constructor.name);
-    console.error('Error Message:', serverErr.message);
-    console.error('Stack Trace:', serverErr.stack);
-    console.error('='.repeat(60));
+    console.error('Error:', err.message);
+    if (err.original) {
+      console.error('MySQL Error:', err.original.message);
+    }
+    console.error('\n⚠️  TROUBLESHOOTING STEPS:');
+    console.error('   1. Is MySQL running on Hostinger?');
+    console.error('   2. Go to hPanel > MySQL Databases');
+    console.error('   3. Check if database status is ACTIVE');
+    console.error('   4. Verify .env file has correct credentials');
+    console.error(`\n   Configured Database: ${process.env.DB_NAME}`);
+    console.error(`   Configured User: ${process.env.DB_USER}`);
+    console.error(`   Configured Host: ${process.env.DB_HOST}`);
+    console.error('\n');
     process.exit(1);
   }
-}
 }
 
 // Start the server
