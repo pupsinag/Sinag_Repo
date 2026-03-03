@@ -419,10 +419,8 @@ const { sequelize } = db;
 // Ensure connections are validated before use
 app.use(async (req, res, next) => {
   try {
-    // Test and restore connection if needed
-    if (!sequelize.authenticate) {
-      await sequelize.authenticate();
-    }
+    // Always test the connection
+    await sequelize.authenticate();
     next();
   } catch (error) {
     console.warn('⚠️ Database connection lost, attempting to reconnect...');
@@ -443,29 +441,26 @@ app.use(async (req, res, next) => {
 console.log('🚀 Starting backend...');
 
 // =========================
-// START SERVER (ALWAYS)
-// =========================
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Backend listening on port ${PORT}`);
-});
-
-// =========================
-// CONNECT DATABASE (ASYNC)
+// CONNECT DATABASE (ASYNC) - BEFORE SERVER STARTS
 // =========================
 const addMissingColumns = require('./utils/addMissingColumns');
 
-sequelize
-  .authenticate()
-  .then(() => {
+async function startServer() {
+  try {
+    console.log('🔄 Authenticating database...');
+    await sequelize.authenticate();
     console.log('✅ Database connected');
-    return sequelize.sync();
-  })
-  .then(() => {
+    
+    await sequelize.sync();
     console.log('✅ Models synced');
-    return addMissingColumns();
-  })
-  .then(() => {
+    
+    await addMissingColumns();
     console.log('✅ Database schema updated');
+    
+    // NOW start the server after database is ready
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`✅ Backend listening on port ${PORT}`);
+    });
     
     // Setup connection pool health check every 5 minutes
     setInterval(async () => {
@@ -484,8 +479,12 @@ sequelize
         }
       }
     }, 5 * 60 * 1000); // Every 5 minutes
-  })
-  .catch((err) => {
-    console.error('❌ Database connection failed:', err);
-  });
+    
+  } catch (err) {
+    console.error('❌ Failed to start server:', err);
+    process.exit(1);
+  }
+}
+
+startServer();
 
