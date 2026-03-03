@@ -448,6 +448,12 @@ const addMissingColumns = require('./utils/addMissingColumns');
 async function startServer() {
   try {
     console.log('🔄 Authenticating database...');
+    console.log('Database Configuration:');
+    console.log(`  Host: ${process.env.DB_HOST}`);
+    console.log(`  Port: ${process.env.DB_PORT}`);
+    console.log(`  Database: ${process.env.DB_NAME}`);
+    console.log(`  User: ${process.env.DB_USER}`);
+    
     await sequelize.authenticate();
     console.log('✅ Database connected');
     
@@ -482,7 +488,18 @@ async function startServer() {
     }, 5 * 60 * 1000); // Every 5 minutes = 300,000 ms
     
   } catch (err) {
-    console.error('❌ Failed to start server:', err);
+    console.error('❌ Failed to start server - Database Error:');
+    console.error(`   Error: ${err.message}`);
+    if (err.original) {
+      console.error(`   Details: ${err.original.message}`);
+    }
+    console.error('\n⚠️  TROUBLESHOOTING:');
+    console.error('   1. Check if MySQL is running on Hostinger');
+    console.error('   2. Verify .env has correct DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
+    console.error('   3. Check Hostinger hPanel → MySQL Databases → Status');
+    console.error(`\n   DB_HOST: ${process.env.DB_HOST}`);
+    console.error(`   DB_NAME: ${process.env.DB_NAME}`);
+    console.error(`   DB_USER: ${process.env.DB_USER}`);
     process.exit(1);
   }
 }
