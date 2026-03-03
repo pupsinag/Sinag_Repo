@@ -2,6 +2,23 @@ module.exports = (sequelize, DataTypes) => {
   const InternEvaluationItem = sequelize.define(
     'InternEvaluationItem',
     {
+      id: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+
+      evaluationId: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        references: {
+          model: 'intern_evaluations',
+          key: 'id',
+        },
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE',
+      },
+
       category: {
         type: DataTypes.ENUM('CHARACTER', 'COMPETENCE'),
         allowNull: false,
@@ -35,10 +52,13 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   InternEvaluationItem.associate = (models) => {
-    InternEvaluationItem.belongsTo(models.InternEvaluation, {
-      foreignKey: 'evaluationId',
-      onDelete: 'CASCADE',
-    });
+    if (models.InternEvaluation) {
+      InternEvaluationItem.belongsTo(models.InternEvaluation, {
+        foreignKey: 'evaluationId',
+        as: 'evaluation',
+        onDelete: 'CASCADE',
+      });
+    }
   };
 
   return InternEvaluationItem;

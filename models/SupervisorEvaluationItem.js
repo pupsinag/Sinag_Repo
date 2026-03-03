@@ -14,10 +14,9 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         comment: 'Primary key',
       },
-      evaluationId: {
+      evaluation_id: {
         type: DataTypes.INTEGER.UNSIGNED,
         allowNull: false,
-        field: 'evaluation_id',
         references: {
           model: 'supervisor_evaluations',
           key: 'id',
@@ -47,8 +46,20 @@ module.exports = (sequelize, DataTypes) => {
       timestamps: true,
       createdAt: 'createdAt',
       updatedAt: 'updatedAt',
-      // Add indexes, hooks, or scopes here if needed
+      underscored: false,
     },
   );
+
+  // 🔗 ASSOCIATIONS
+  SupervisorEvaluationItem.associate = (models) => {
+    if (models.SupervisorEvaluation) {
+      SupervisorEvaluationItem.belongsTo(models.SupervisorEvaluation, {
+        foreignKey: 'evaluation_id',
+        as: 'evaluation',
+        onDelete: 'CASCADE',
+      });
+    }
+  };
+
   return SupervisorEvaluationItem;
 };

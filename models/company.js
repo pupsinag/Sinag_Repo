@@ -52,6 +52,32 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
 
+      file_content: {
+        type: DataTypes.BLOB('long'),
+        allowNull: true,
+        comment: 'MOA file content stored as binary data for persistence across redeployments',
+      },
+
+      file_mime_type: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        defaultValue: 'application/pdf',
+        comment: 'MIME type of the uploaded MOA file',
+      },
+
+      file_upload_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: 'When the MOA file was uploaded',
+      },
+
+      moa_status: {
+        type: DataTypes.STRING(50),
+        defaultValue: 'pending',
+        allowNull: true,
+        comment: 'Status of MOA (e.g., pending, active, expired, renewing)',
+      },
+
       password: {
         type: DataTypes.STRING(255),
         allowNull: false,
@@ -67,7 +93,9 @@ module.exports = (sequelize, DataTypes) => {
       sequelize,
       modelName: 'Company',
       tableName: 'companies',
-      timestamps: false,
+      timestamps: true,
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
     },
   );
 

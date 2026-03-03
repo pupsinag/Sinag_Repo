@@ -67,8 +67,10 @@ if (db.SupervisorEvaluation && db.Intern && db.Company) {
   db.SupervisorEvaluation.belongsTo(db.Company, { foreignKey: 'company_id', as: 'supervisorCompany' });
 }
 
-db.SupervisorEvaluation.hasMany(db.SupervisorEvaluationItem, { foreignKey: 'evaluationId', as: 'items' });
-db.SupervisorEvaluationItem.belongsTo(db.SupervisorEvaluation, { foreignKey: 'evaluationId', as: 'evaluation' });
+if (db.SupervisorEvaluation && db.SupervisorEvaluationItem) {
+  db.SupervisorEvaluation.hasMany(db.SupervisorEvaluationItem, { foreignKey: 'evaluation_id', as: 'items' });
+  db.SupervisorEvaluationItem.belongsTo(db.SupervisorEvaluation, { foreignKey: 'evaluation_id', as: 'evaluation' });
+}
 
 db.sequelize = sequelize;
 db.Sequelize = Sequelize;

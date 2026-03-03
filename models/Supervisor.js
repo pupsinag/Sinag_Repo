@@ -27,6 +27,12 @@ module.exports = (sequelize, DataTypes) => {
       user_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
+        references: {
+          model: 'users',
+          key: 'id',
+        },
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
       },
       company_id: {
         type: DataTypes.INTEGER.UNSIGNED,
@@ -42,13 +48,44 @@ module.exports = (sequelize, DataTypes) => {
     {
       tableName: 'supervisors',
       timestamps: true,
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+      underscored: false,
     }
   );
 
   Supervisor.associate = (models) => {
-    Supervisor.belongsTo(models.Company, { foreignKey: 'company_id', as: 'company' });
-    Supervisor.hasMany(models.Intern, { foreignKey: 'supervisor_id', as: 'interns' });
-    Supervisor.belongsTo(models.User, { foreignKey: 'user_id', as: 'user' });
+    if (models.Company) {
+      Supervisor.belongsTo(models.Company, {
+        foreignKey: 'company_id',
+        as: 'company',
+        onDelete: 'CASCADE',
+      });
+    }
+
+    if (models.Intern) {
+      Supervisor.hasMany(models.Intern, {
+        foreignKey: 'supervisor_id',
+        as: 'interns',
+        onDelete: 'SET NULL',
+      });
+    }
+
+    if (models.User) {
+      Supervisor.belongsTo(models.User, {
+        foreignKey: 'user_id',
+        as: 'user',
+        onDelete: 'SET NULL',
+      });
+    }
+
+    if (models.SupervisorEvaluation) {
+      Supervisor.hasMany(models.SupervisorEvaluation, {
+        foreignKey: 'supervisor_id',
+        as: 'evaluations',
+        onDelete: 'CASCADE',
+      });
+    }
   };
 
   return Supervisor;

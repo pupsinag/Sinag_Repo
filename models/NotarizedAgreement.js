@@ -1,12 +1,23 @@
 /* eslint-env node */
 module.exports = (sequelize, DataTypes) => {
-  const CompanyDocuments = sequelize.define(
-    'CompanyDocuments',
+  const NotarizedAgreement = sequelize.define(
+    'NotarizedAgreement',
     {
       id: {
         type: DataTypes.INTEGER.UNSIGNED,
         autoIncrement: true,
         primaryKey: true,
+      },
+
+      intern_id: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        references: {
+          model: 'interns',
+          key: 'id',
+        },
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE',
       },
 
       company_id: {
@@ -20,12 +31,6 @@ module.exports = (sequelize, DataTypes) => {
         onUpdate: 'CASCADE',
       },
 
-      document_type: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        comment: 'Type of document (e.g., moa, agreement, certificate)',
-      },
-
       file_name: {
         type: DataTypes.STRING(255),
         allowNull: false,
@@ -34,7 +39,6 @@ module.exports = (sequelize, DataTypes) => {
       file_path: {
         type: DataTypes.STRING(255),
         allowNull: true,
-        comment: 'Original file path (for reference)',
       },
 
       file_content: {
@@ -46,41 +50,46 @@ module.exports = (sequelize, DataTypes) => {
       file_mime_type: {
         type: DataTypes.STRING(100),
         allowNull: true,
-        defaultValue: 'application/octet-stream',
+        defaultValue: 'application/pdf',
         comment: 'MIME type of the uploaded file',
       },
 
-      file_size: {
-        type: DataTypes.BIGINT,
-        allowNull: true,
-        comment: 'File size in bytes',
-      },
-
-      uploaded_date: {
+      upload_date: {
         type: DataTypes.DATE,
         defaultValue: DataTypes.NOW,
       },
 
       status: {
-        type: DataTypes.STRING,
-        defaultValue: 'active',
+        type: DataTypes.STRING(50),
+        defaultValue: 'pending',
+        allowNull: true,
       },
 
-      remarks: DataTypes.TEXT,
+      remarks: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
     },
     {
-      tableName: 'company_documents',
+      tableName: 'notarized_agreements',
       timestamps: true,
       underscored: false,
     },
   );
 
-  CompanyDocuments.associate = (models) => {
-    CompanyDocuments.belongsTo(models.Company, {
+  NotarizedAgreement.associate = (models) => {
+    NotarizedAgreement.belongsTo(models.Intern, {
+      foreignKey: 'intern_id',
+      as: 'intern',
+      onDelete: 'CASCADE',
+    });
+
+    NotarizedAgreement.belongsTo(models.Company, {
       foreignKey: 'company_id',
       as: 'company',
+      onDelete: 'CASCADE',
     });
   };
 
-  return CompanyDocuments;
+  return NotarizedAgreement;
 };
