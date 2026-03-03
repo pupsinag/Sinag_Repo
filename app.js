@@ -398,7 +398,7 @@ app.get('/*', (req, res) => {
 });
 
 // =========================
-// ERROR HANDLER (LAST)
+// ERROR HANDLER (LAST - BEFORE DATABASE INIT)
 // =========================
 app.use((err, req, res, next) => {
   console.error('❌ SERVER ERROR:', err);
@@ -408,101 +408,111 @@ app.use((err, req, res, next) => {
 });
 
 // =========================
-// LOAD DATABASE + MODELS (AFTER routes defined)
-// =========================
-const db = require('./models');
-const { sequelize } = db;
-
-// =========================
-// CONNECTION POOL MANAGEMENT
-// =========================
-// Ensure connections are validated before use
-app.use(async (req, res, next) => {
-  try {
-    // Always test the connection
-    await sequelize.authenticate();
-    next();
-  } catch (error) {
-    console.warn('⚠️ Database connection lost, attempting to reconnect...');
-    try {
-      await sequelize.authenticate();
-      console.log('✅ Database reconnected successfully');
-      next();
-    } catch (reconnectError) {
-      console.error('❌ Failed to reconnect to database:', reconnectError);
-      res.status(503).json({ message: 'Database connection unavailable' });
-    }
-  }
-});
-
-// =========================
-// START SERVER
+// START SERVER (ASYNC - WAIT FOR DATABASE)
 // =========================
 console.log('🚀 Starting backend...');
 
-// =========================
-// CONNECT DATABASE (ASYNC) - BEFORE SERVER STARTS
-// =========================
+const sequelize = require('./config/database');
 const addMissingColumns = require('./utils/addMissingColumns');
+let db = null;
 
 async function startServer() {
   try {
-    console.log('🔄 Authenticating database...');
-    console.log('Database Configuration:');
-    console.log(`  Host: ${process.env.DB_HOST}`);
-    console.log(`  Port: ${process.env.DB_PORT}`);
-    console.log(`  Database: ${process.env.DB_NAME}`);
-    console.log(`  User: ${process.env.DB_USER}`);
+    console.log('\n📊 Database Configuration:');
+    console.log(`   Host: ${process.env.DB_HOST}`);
+    console.log(`   Port: ${process.env.DB_PORT}`);
+    console.log(`   Database: ${process.env.DB_NAME}`);
+    console.log(`   User: ${process.env.DB_USER}`);
     
+    // CRITICAL: Authenticate database FIRST
+    console.log('\n🔄 Testing database connection...');
     await sequelize.authenticate();
-    console.log('✅ Database connected');
+    console.log('✅ Database authenticated successfully');
     
-    await sequelize.sync();
+    // NOW load models (after database is ready)
+    console.log('\n📚 Loading models...');
+    db = require('./models');
+    console.log('✅ Models loaded');
+    
+    // Sync database schema
+    console.log('\n🔄 Syncing models with database...');
+    await sequelize.sync({ alter: false });
     console.log('✅ Models synced');
     
+    // Add missing columns
+    console.log('\n🔧 Checking for missing columns...');
     await addMissingColumns();
-    console.log('✅ Database schema updated');
+    console.log('✅ Database schema verified');
     
-    // NOW start the server after database is ready
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✅ Backend listening on port ${PORT}`);
+    // Add connection validation middleware BEFORE listening
+    // This ensures every request validates the database connection
+    app.use(async (req, res, next) => {
+      try {
+        await sequelize.authenticate();
+        next();
+      } catch (error) {
+        console.warn('⚠️ Connection lost on request, attempting reconnect...');
+        try {
+          await sequelize.authenticate();
+          next();
+        } catch (reconnectError) {
+          console.error('❌ Could not reconnect to database');
+          return res.status(503).json({ 
+            message: 'Database connection unavailable. Please try again in a moment.',
+            error: 'tangina sira ngani'
+          });
+        }
+      }
     });
     
-    // CRITICAL: Keep-alive ping - executes every 5 minutes to prevent idle timeout
-    // This is essential for Hostinger MySQL which auto-closes idle connections
+    // NOW start the server after everything is ready
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`\n✅ BACKEND READY: http://localhost:${PORT}`);
+      console.log('✅ Database connected and models synced');
+      console.log('✅ Frontend served from public/dist\n');
+    });
+    
+    // Handle server errors
+    server.on('error', (err) => {
+      console.error('❌ Server error:', err);
+      process.exit(1);
+    });
+    
+    // CRITICAL: Keep-alive ping - prevents MySQL idle timeout
     setInterval(async () => {
       try {
         await sequelize.authenticate();
-        console.log('✅ Database keep-alive ping successful');
       } catch (error) {
-        console.warn('⚠️ Keep-alive ping failed:', error.message);
-        // Attempt to reconnect
+        console.warn('⚠️ Keep-alive ping failed, attempting reconnect...');
         try {
           await sequelize.close();
           await sequelize.authenticate();
-          console.log('✅ Database reconnected after failed ping');
+          console.log('✅ Database reconnected');
         } catch (recoveryError) {
-          console.error('❌ Failed to recover database connection:', recoveryError.message);
+          console.error('❌ Failed to recover database:', recoveryError.message);
         }
       }
-    }, 5 * 60 * 1000); // Every 5 minutes = 300,000 ms
+    }, 5 * 60 * 1000); // Every 5 minutes
     
   } catch (err) {
-    console.error('❌ Failed to start server - Database Error:');
-    console.error(`   Error: ${err.message}`);
+    console.error('\n❌ FAILED TO START SERVER\n');
+    console.error('Error:', err.message);
     if (err.original) {
-      console.error(`   Details: ${err.original.message}`);
+      console.error('MySQL Error:', err.original.message);
     }
-    console.error('\n⚠️  TROUBLESHOOTING:');
-    console.error('   1. Check if MySQL is running on Hostinger');
-    console.error('   2. Verify .env has correct DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
-    console.error('   3. Check Hostinger hPanel → MySQL Databases → Status');
-    console.error(`\n   DB_HOST: ${process.env.DB_HOST}`);
-    console.error(`   DB_NAME: ${process.env.DB_NAME}`);
-    console.error(`   DB_USER: ${process.env.DB_USER}`);
+    console.error('\n⚠️  TROUBLESHOOTING STEPS:');
+    console.error('   1. Is MySQL running on Hostinger?');
+    console.error('   2. Go to hPanel > MySQL Databases');
+    console.error('   3. Check if database status is ACTIVE');
+    console.error('   4. Verify .env file has correct credentials');
+    console.error(`\n   Configured Database: ${process.env.DB_NAME}`);
+    console.error(`   Configured User: ${process.env.DB_USER}`);
+    console.error(`   Configured Host: ${process.env.DB_HOST}`);
+    console.error('\n');
     process.exit(1);
   }
 }
 
+// Start the server
 startServer();
 
