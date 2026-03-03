@@ -94,13 +94,17 @@ async function uploadInternDoc(req, res) {
       file_size: file.size,
     });
 
-    // Read file content for database storage
+    // Read file content for database storage - THIS IS CRITICAL FOR PERSISTENCE
     let fileContent = null;
     let fileMimeType = 'application/octet-stream';
     
     try {
       const filePath = file.path;
       fileContent = fs.readFileSync(filePath);
+      
+      if (!fileContent || fileContent.length === 0) {
+        throw new Error('File content is empty');
+      }
       
       // Determine MIME type from file extension
       const ext = path.extname(file.originalname).toLowerCase();
@@ -117,27 +121,35 @@ async function uploadInternDoc(req, res) {
       };
       fileMimeType = mimeTypes[ext] || 'application/octet-stream';
       
-      console.log('📁 [FILE CONTENT] Read file successfully:', {
+      console.log('✅ [DATABASE STORAGE] File content loaded successfully:', {
         size: fileContent.length,
         mimeType: fileMimeType,
+        originalName: file.originalname,
       });
     } catch (fileReadErr) {
-      console.warn('⚠️ Failed to read file content:', fileReadErr.message);
-      console.warn('   File will be served from filesystem fallback');
+      console.error('❌ CRITICAL: Failed to read file content for database storage:', fileReadErr.message);
+      return res.status(500).json({
+        message: 'Could not process file - database storage failed',
+        error: fileReadErr.message
+      });
     }
 
     const docData = {
       intern_id: intern.id,
       document_type: targetColumn,
       file_name: file.originalname,
-      file_path: file.filename,
-      file_content: fileContent,
+      file_path: file.filename, // Keep for backward compatibility but not primary
+      file_content: fileContent, // PRIMARY STORAGE - survives redeploys
       file_mime_type: fileMimeType,
       uploaded_date: new Date(),
       status: 'Pending',
     };
 
-    console.log('💾 [SAVE DATA] Saving document with:', docData);
+    console.log('💾 [DATABASE SAVE] Saving document to database (file_content field):', {
+      size: fileContent.length,
+      intern_id: intern.id,
+      document_type: targetColumn,
+    });
 
     let docs;
     try {
@@ -154,48 +166,45 @@ async function uploadInternDoc(req, res) {
     } catch (dbErr) {
       console.error('❌ DATABASE ERROR when saving document:', dbErr.message);
       console.error('   Full error:', dbErr);
-      throw dbErr;
+      return res.status(500).json({
+        message: 'Document upload failed - database save error',
+        error: dbErr.message
+      });
     }
 
-    // Verify document was saved
+    // CRITICAL: Verify file_content was successfully saved to database
     const verifyDoc = await InternDocuments.findOne({
       where: { intern_id: intern.id, document_type: targetColumn },
+      attributes: ['id', 'file_content', 'file_name', 'file_mime_type']
     });
 
     if (!verifyDoc) {
       console.error('❌ CRITICAL: Document was not found in database after save!');
       return res.status(500).json({
-        message: 'Document upload failed - could not verify save',
-        error: 'Database save verification failed'
+        message: 'Document upload failed - could not verify in database',
+        error: 'Database verification failed'
       });
     }
 
-    // Verify file exists on disk
-    const filePath = path.join(__dirname, '..', 'uploads', verifyDoc.file_path);
-    const fileExists = fs.existsSync(filePath);
-    console.log('📁 [FILE CHECK]', filePath, '→', fileExists ? '✅ EXISTS' : '❌ NOT FOUND');
-
-    if (!fileExists) {
-      console.error('❌ CRITICAL: File was not saved to disk!', filePath);
+    if (!verifyDoc.file_content || verifyDoc.file_content.length === 0) {
+      console.error('❌ CRITICAL: File content was not saved to database!');
       return res.status(500).json({
-        message: 'Document upload failed - file not saved to disk',
-        error: 'File system error',
-        debug: { expected_path: filePath, db_file_path: verifyDoc.file_path }
+        message: 'Document upload failed - file content not persisted to database',
+        error: 'Database persistence error'
       });
     }
 
-    console.log('✅ Document verified in database:', {
+    console.log('✅ [VERIFIED] Document successfully stored in database:', {
       id: verifyDoc.id,
-      intern_id: verifyDoc.intern_id,
-      document_type: verifyDoc.document_type,
-      file_path: verifyDoc.file_path,
-      multer_filename: file.filename,
-      match: file.filename === verifyDoc.file_path ? '✅ MATCH' : '❌ MISMATCH',
+      file_name: verifyDoc.file_name,
+      file_size: verifyDoc.file_content.length,
+      mime_type: verifyDoc.file_mime_type,
     });
 
     return res.json({
-      message: 'Document uploaded successfully',
-      file: verifyDoc.file_path,
+      message: 'Document uploaded successfully and stored in database (survives redeploys)',
+      file: verifyDoc.file_name,
+      fileSize: verifyDoc.file_content.length,
     });
   } catch (err) {
     console.error('❌ UPLOAD INTERN DOC ERROR:', err.message);

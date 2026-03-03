@@ -18,17 +18,18 @@ const sequelize = new Sequelize(
     host: dbHost,
     port: dbPort,
     dialect: 'mysql',
-    logging: console.log,
+    logging: false, // Disable verbose logging in production
     pool: {
       max: 10,
       min: 2,
       acquire: 60000,
-      idle: 25000, // MATCHED: Keep below MySQL wait_timeout (28800s)
-      evict: 25000, // MATCHED: Validate every 25 seconds to keep alive
-      validate: true
+      idle: 10000, // ✅ CRITICAL: Return connection after 10 seconds of inactivity (prevents idle timeout)
+      evict: 10000, // ✅ Validate connection every 10 seconds
+      validate: true, // ✅ Run query before giving connection to user
+      handleDisconnects: true // ✅ Reconnect on disconnection
     },
     dialectOptions: {
-      connectTimeout: 20000, // MATCHED: MySQL connect_timeout is 20 seconds
+      connectTimeout: 20000,
       keepAliveInitialDelaySeconds: 0,
       enableKeepAlive: true,
       supportBigNumbers: true,

@@ -462,23 +462,24 @@ async function startServer() {
       console.log(`✅ Backend listening on port ${PORT}`);
     });
     
-    // Setup connection pool health check every 5 minutes
+    // CRITICAL: Keep-alive ping - executes every 5 minutes to prevent idle timeout
+    // This is essential for Hostinger MySQL which auto-closes idle connections
     setInterval(async () => {
       try {
         await sequelize.authenticate();
-        console.log('✅ Connection pool health check passed');
+        console.log('✅ Database keep-alive ping successful');
       } catch (error) {
-        console.warn('⚠️ Connection pool health check failed:', error.message);
-        // Attempt to recreate connection
+        console.warn('⚠️ Keep-alive ping failed:', error.message);
+        // Attempt to reconnect
         try {
           await sequelize.close();
           await sequelize.authenticate();
-          console.log('✅ Connection pool recovered');
+          console.log('✅ Database reconnected after failed ping');
         } catch (recoveryError) {
-          console.error('❌ Failed to recover connection pool:', recoveryError);
+          console.error('❌ Failed to recover database connection:', recoveryError.message);
         }
       }
-    }, 5 * 60 * 1000); // Every 5 minutes
+    }, 5 * 60 * 1000); // Every 5 minutes = 300,000 ms
     
   } catch (err) {
     console.error('❌ Failed to start server:', err);
