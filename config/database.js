@@ -2,7 +2,7 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-const dbHost = (process.env.DB_HOST || 'localhost').trim();
+const dbHost = (process.env.DB_HOST || '127.0.0.1').trim();
 const dbPort = Number((process.env.DB_PORT || '3306').trim());
 const dbName = (process.env.DB_NAME || '').trim();
 const dbUser = (process.env.DB_USER || '').trim();
@@ -18,22 +18,25 @@ const sequelize = new Sequelize(
     host: dbHost,
     port: dbPort,
     dialect: 'mysql',
-    logging: console.log, // keep for now
+    logging: console.log,
     pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000, // close idle connections after 10 seconds
-      evict: 15000 // validate connections every 15 seconds
+      max: 10,
+      min: 2,
+      acquire: 60000,
+      idle: 25000, // MATCHED: Keep below MySQL wait_timeout (28800s)
+      evict: 25000, // MATCHED: Validate every 25 seconds to keep alive
+      validate: true
     },
     dialectOptions: {
-      connectTimeout: 60000,
+      connectTimeout: 20000, // MATCHED: MySQL connect_timeout is 20 seconds
+      keepAliveInitialDelaySeconds: 0,
+      enableKeepAlive: true,
       supportBigNumbers: true,
       bigNumberStrings: true,
-      dateStrings: true
+      dateStrings: true,
+      timezone: '+00:00'
     }
   }
 );
 
 module.exports = sequelize;
-

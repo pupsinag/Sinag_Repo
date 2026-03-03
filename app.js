@@ -254,6 +254,29 @@ const loadRoute = (filePath, routeName) => {
 };
 
 // =========================
+// HEALTH CHECK ENDPOINT (For monitoring database connection)
+// =========================
+app.get('/api/health', async (req, res) => {
+  try {
+    const { sequelize } = require('./models');
+    await sequelize.authenticate();
+    res.status(200).json({
+      status: 'ok',
+      message: 'Database connected',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('❌ Health check failed:', error.message);
+    res.status(503).json({
+      status: 'error',
+      message: 'Database connection failed',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// =========================
 // ROUTES
 // =========================
 const authRoute = loadRoute(path.join(__dirname, 'routes', 'auth.js'), 'auth');
