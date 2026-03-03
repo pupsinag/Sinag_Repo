@@ -335,17 +335,6 @@ if (evaluationSettingsRoute) {
 }
 
 // =========================
-// COMPANY DOCUMENTS ROUTE
-// =========================
-const companyDocumentsRoute = loadRoute('./routes/companyDocuments', 'companyDocuments');
-if (companyDocumentsRoute) {
-  console.log('[ROUTE] /api/company-documents loaded and registered');
-  app.use('/api/company-documents', companyDocumentsRoute);
-} else {
-  console.warn('[ROUTE] /api/company-documents NOT loaded!');
-}
-
-// =========================
 // DAILY LOG ROUTE
 // =========================
 const internDailyLogRoutes = loadRoute(
