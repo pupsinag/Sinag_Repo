@@ -30,7 +30,6 @@ const sequelize = new Sequelize(
     },
     dialectOptions: {
       connectTimeout: 20000,
-      keepAliveInitialDelaySeconds: 0,
       enableKeepAlive: true,
       supportBigNumbers: true,
       bigNumberStrings: true,

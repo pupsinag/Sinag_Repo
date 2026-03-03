@@ -17,11 +17,13 @@ console.log(`  NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`  PORT: ${process.env.PORT}`);
 
 // Try to load express
+let express, cors, sequelize;
+
 try {
   console.log('\nStep 2: Loading dependencies...');
-  const express = require('express');
-  const cors = require('cors');
-  const sequelize = require('./config/database');
+  express = require('express');
+  cors = require('cors');
+  sequelize = require('./config/database');
   console.log('  ✅ Express, CORS, and Database config loaded');
 } catch (err) {
   console.log('  ❌ Failed to load dependencies:');
