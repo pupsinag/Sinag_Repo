@@ -8,6 +8,14 @@ console.log('\n╔════════════════════�
 console.log('║     PUPSINAG STARTUP TEST - Replicating app.js         ║');
 console.log('╚════════════════════════════════════════════════════════╝\n');
 
+// **ENFORCE NODE VERSION EARLY**
+const requiredNodeMajor = 18;
+const currentMajor = parseInt(process.versions.node.split('.')[0], 10);
+if (currentMajor < requiredNodeMajor) {
+  console.error(`\n❌ Node.js ${requiredNodeMajor}+ is required to run the startup test; detected ${process.versions.node}.`);
+  process.exit(1);
+}
+
 // Load environment variables
 require('dotenv').config();
 const path = require('path');

@@ -44,8 +44,11 @@ This allows advisers to:
 cd your/sinag/folder
 git pull origin main
 npm install  # Only if dependencies changed
+# Ensure Node >= 18 is active (see note below)
 # Restart application
 ```
+
+> ⚠️ **Node.js version**: Hostinger requires Node 18 or newer. Add an `.nvmrc` file (already in repo) or configure the version in the Hostinger control panel.
 
 ### Step 2: Run Migrations (10 min)
 **Option A: Via phpMyAdmin (Recommended for Hostinger)**

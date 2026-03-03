@@ -3,6 +3,7 @@
 ## PROJECT CONTEXT
 - **Hosting**: Hostinger with phpMyAdmin
 - **Database**: MySQL (Hostinger managed)
+- **Runtime requirement**: Node.js 18 or higher (the repo includes an `.nvmrc` file and `engines.node` entry for guidance)
 - **Account Creation Flow**:
   - Coordinator creates Adviser
   - Adviser creates Intern account
