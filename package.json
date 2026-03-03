@@ -8,6 +8,7 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "build": "echo 'Frontend already pre-built and included'",
+    "postinstall": "echo 'Dependencies installed. Ready to start with: npm start'",
     "migrate:020": "node migrations/run_020_migration.js",
     "verify:files": "node verify_file_storage.js"
   },
