@@ -1,0 +1,95 @@
+const sequelize = require('../config/database');
+const { DataTypes } = require('sequelize');
+const evaluationSettings = require('../services/evaluationSettingsService');
+
+const InternEvaluation = require('../models/InternEvaluation')(sequelize, DataTypes);
+const InternEvaluationItem = require('../models/InternEvaluationItem')(sequelize, DataTypes);
+
+// =========================
+// RELATIONSHIPS
+// =========================
+InternEvaluation.hasMany(InternEvaluationItem, {
+  foreignKey: 'evaluationId',
+  onDelete: 'CASCADE',
+});
+
+InternEvaluationItem.belongsTo(InternEvaluation, {
+  foreignKey: 'evaluationId',
+});
+
+// =========================
+// CREATE INTERN EVALUATION
+// =========================
+exports.createEvaluation = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    // 🔐 CHECK IF EVALUATION IS ACTIVE
+    const isActive = evaluationSettings.isEvaluationActive('intern');
+    if (!isActive) {
+      await transaction.rollback();
+      return res.status(403).json({
+        message: 'Intern evaluations are currently not accepting submissions. Please contact the coordinator.',
+      });
+    }
+
+    const { intern_id, ratings, totalScore, ...evaluationData } = req.body;
+
+    if (!intern_id) {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: 'Intern ID is required.',
+      });
+    }
+
+    // 🔒 PREVENT DUPLICATE EVALUATION PER INTERN, ACADEMIC YEAR, SECTION (if available)
+    const duplicateWhere = { intern_id };
+    if (evaluationData.academic_year) duplicateWhere.academic_year = evaluationData.academic_year;
+    if (evaluationData.section) duplicateWhere.section = evaluationData.section;
+    const existing = await InternEvaluation.findOne({
+      where: duplicateWhere,
+      transaction,
+    });
+    if (existing) {
+      await transaction.rollback();
+      return res.status(409).json({
+        message: 'You have already submitted an intern evaluation for this intern, term, and academic year.',
+      });
+    }
+
+    // 1️⃣ SAVE MAIN EVALUATION
+    const evaluation = await InternEvaluation.create(
+      {
+        intern_id,
+        ...evaluationData,
+        totalScore,
+      },
+      { transaction },
+    );
+
+    // 2️⃣ SAVE ITEM RATINGS
+    const rows = ratings.map((score, index) => ({
+      evaluationId: evaluation.id,
+      category: index < 5 ? 'CHARACTER' : 'COMPETENCE',
+      itemText: `Indicator ${index + 1}`,
+      maxScore: index < 5 ? 10 : 5,
+      score: Number(score) || 0,
+    }));
+
+    await InternEvaluationItem.bulkCreate(rows, { transaction });
+
+    // ✅ COMMIT TRANSACTION
+    await transaction.commit();
+
+    res.status(201).json({
+      message: 'Evaluation saved successfully',
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error('❌ Evaluation Error:', error);
+
+    res.status(500).json({
+      message: 'Failed to save evaluation',
+    });
+  }
+};
