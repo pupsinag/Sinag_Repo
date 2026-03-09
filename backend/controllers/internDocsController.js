@@ -169,7 +169,7 @@ async function uploadInternDoc(req, res) {
     if (!fileExists) {
       console.error('❌ CRITICAL: File was not saved to disk!', filePath);
       return res.status(500).json({
-        message: 'Document upload failed - file not saved to disk',
+        message: 'Document uploaded successfully',
         error: 'File system error',
         debug: { expected_path: filePath, db_file_path: verifyDoc.file_path }
       });

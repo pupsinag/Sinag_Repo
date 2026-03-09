@@ -8,7 +8,22 @@ const { Intern, Company, User } = require('../models');
 
 exports.generateInternAssignedToHTE = async (req, res) => {
   try {
-    const { program, year_section } = req.body;
+    let { program, year_section } = req.body;
+    const userRole = req.user?.role?.toLowerCase();
+    
+    // ✅ AUTHORIZATION: Advisers can only view their own program/year_section
+    if (userRole === 'adviser') {
+      console.log('[generateInternAssignedToHTE] 🔐 Adviser detected - enforcing program/year_section restrictions');
+      program = req.user.program; // Override with adviser's program
+      if (req.user.yearSection) {
+        year_section = req.user.yearSection; // Override with adviser's year_section if set
+      }
+      console.log('[generateInternAssignedToHTE] Adviser\'s program:', program, ', yearSection:', year_section);
+    } else if (!['coordinator', 'superadmin'].includes(userRole)) {
+      console.error('[generateInternAssignedToHTE] ❌ User role not authorized:', userRole);
+      return res.status(403).json({ message: 'Not authorized to generate reports' });
+    }
+    
     if (!program) {
       return res.status(400).json({ message: 'Program is required' });
     }

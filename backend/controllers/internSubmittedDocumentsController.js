@@ -6,12 +6,27 @@ const { Intern, InternDocuments, User, Company } = require('../models');
 exports.generateInternSubmittedDocuments = async (req, res) => {
   console.log('\n\n========== generateInternSubmittedDocuments STARTED ==========');
   console.log('Request body:', JSON.stringify(req.body));
-  console.log('Request user:', req.user ? { id: req.user.id, role: req.user.role } : 'NO USER');
+  console.log('Request user:', req.user ? { id: req.user.id, role: req.user.role, program: req.user.program, yearSection: req.user.yearSection } : 'NO USER');
   
   let doc;
 
   try {
-    const { program, year_section } = req.body;
+    let { program, year_section } = req.body;
+    const userRole = req.user?.role?.toLowerCase();
+    
+    // ✅ AUTHORIZATION: Advisers can only view their own program/year_section
+    if (userRole === 'adviser') {
+      console.log('[generateInternSubmittedDocuments] 🔐 Adviser detected - enforcing program/year_section restrictions');
+      program = req.user.program; // Override with adviser's program
+      if (req.user.yearSection) {
+        year_section = req.user.yearSection; // Override with adviser's year_section if set
+      }
+      console.log('[generateInternSubmittedDocuments] Adviser\'s program:', program, ', yearSection:', year_section);
+    } else if (!['coordinator', 'superadmin'].includes(userRole)) {
+      console.error('[generateInternSubmittedDocuments] ❌ User role not authorized:', userRole);
+      return res.status(403).json({ message: 'Not authorized to generate reports' });
+    }
+    
     console.log('[generateInternSubmittedDocuments] program=', program, ', year_section=', year_section);
     console.log('[generateInternSubmittedDocuments] Models loaded:', {
       Intern: !!Intern,
@@ -22,7 +37,7 @@ exports.generateInternSubmittedDocuments = async (req, res) => {
     
     if (!program) {
       console.error('[generateInternSubmittedDocuments] ❌ Program is required');
-      return res.status(400).json({ message: 'Program is required' });
+      return res.status(400).json({ message: 'Program is required - missing from user profile' });
     }
 
     // Fetch adviser name for the program and year_section
