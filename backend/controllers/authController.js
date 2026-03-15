@@ -756,6 +756,7 @@ exports.assignHTE = async (req, res, next) => {
     const Supervisor = require('../models').Supervisor;
     
     // ✅ STEP 1: Look for exact match (name + email + company)
+    // Each supervisor is unique by name+email+company combination
     let supervisor = await Supervisor.findOne({
       where: {
         name: supervisorName,
@@ -764,17 +765,8 @@ exports.assignHTE = async (req, res, next) => {
       },
     });
     
-    // ✅ STEP 2: If not found exactly, look for email within this company
-    if (!supervisor) {
-      supervisor = await Supervisor.findOne({
-        where: {
-          email: supervisorEmail,
-          company_id: companyId,
-        },
-      });
-    }
-    
-    // ✅ STEP 3: If still not found, create new supervisor
+    // ✅ STEP 2: If not found exactly, CREATE NEW SUPERVISOR
+    // This allows multiple supervisors per company with different emails/names
     if (!supervisor) {
       try {
         supervisor = await Supervisor.create({
@@ -782,30 +774,18 @@ exports.assignHTE = async (req, res, next) => {
           email: supervisorEmail,
           company_id: companyId,
         });
-        console.log(`[assignHTE] Created new supervisor: ${supervisorName} (${supervisorEmail}) for company ${companyId}`);
+        console.log(`[assignHTE] ✅ Created new supervisor: "${supervisorName}" (${supervisorEmail}) for company ${companyId}`);
       } catch (err) {
-        // If email already exists globally (in different company), still create if company_id differs
+        // If email already exists globally (in different company), suggest different email
         if (err.name === 'SequelizeUniqueConstraintError' && err.fields?.email) {
-          console.warn(`[assignHTE] Email ${supervisorEmail} exists globally. Looking for company-specific record...`);
-          // Try one more time with company + email
-          supervisor = await Supervisor.findOne({
-            where: {
-              email: supervisorEmail,
-              company_id: companyId,
-            },
-          });
-          if (!supervisor) {
-            console.error(`[assignHTE] ❌ Email ${supervisorEmail} exists globally but not in this company. This indicates a database schema issue with email unique constraint.`);
-            throw new Error(`Supervisor email ${supervisorEmail} already exists in another company. Please use a different email.`);
-          }
+          console.error(`[assignHTE] ❌ Email ${supervisorEmail} already exists globally`);
+          throw new Error(`Supervisor email "${supervisorEmail}" already exists in the system. Please use a different email.`);
         } else {
           throw err;
         }
       }
-    } else if (supervisor.name !== supervisorName) {
-      // ✅ UPDATE NAME if it differs (same email, same company, but different name)
-      console.log(`[assignHTE] Updating supervisor name from "${supervisor.name}" to "${supervisorName}"`);
-      await supervisor.update({ name: supervisorName });
+    } else {
+      console.log(`[assignHTE] ✅ Reused existing supervisor: "${supervisorName}" (${supervisorEmail}) for company ${companyId}`);
     }
 
     intern.company_id = companyId;
