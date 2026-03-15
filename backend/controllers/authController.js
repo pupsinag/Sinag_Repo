@@ -221,14 +221,45 @@ exports.login = async (req, res, next) => {
 
       res.cookie('token', token, cookieOptions);
 
+      // ✅ Match primary supervisor with company.supervisorName
+      let primarySupervisor = null;
+      const supervisorsArray = company.supervisors && company.supervisors.length > 0 ? company.supervisors : [];
+      
+      if (company.supervisorName && supervisorsArray.length > 0) {
+        // Try to find supervisor matching the company's supervisorName
+        primarySupervisor = supervisorsArray.find(s => 
+          s.name && s.name.toLowerCase() === company.supervisorName.toLowerCase()
+        );
+      }
+      
+      // If no match by name, use the first supervisor
+      if (!primarySupervisor && supervisorsArray.length > 0) {
+        primarySupervisor = supervisorsArray[0];
+      }
+
       return res.json({
         token,
         company: {
           id: company.id,
           name: company.name,
           email: company.email,
+          supervisorName: company.supervisorName,
         },
-        supervisors: company.supervisors || [],
+        primary_supervisor: primarySupervisor ? {
+          id: primarySupervisor.id,
+          name: primarySupervisor.name,
+          email: primarySupervisor.email,
+          phone: primarySupervisor.phone,
+          is_active: primarySupervisor.is_active,
+        } : null,
+        supervisors: supervisorsArray.map(s => ({
+          id: s.id,
+          name: s.name,
+          email: s.email,
+          phone: s.phone,
+          is_active: s.is_active,
+          is_primary: primarySupervisor && primarySupervisor.id === s.id, // Mark if primary
+        })),
       });
     }
 
@@ -913,10 +944,27 @@ exports.me = async (req, res, next) => {
     if (req.user.role === 'supervisor' || req.user.role === 'company') {
       const company = await Company.findByPk(req.user.id, {
         attributes: { exclude: ['password'] },
+        include: [{ model: db.Supervisor, as: 'supervisors' }],
       });
 
       if (!company) {
         return res.status(404).json({ message: 'Company not found' });
+      }
+
+      // ✅ Match primary supervisor with company.supervisorName
+      let primarySupervisor = null;
+      const supervisorsArray = company.supervisors && company.supervisors.length > 0 ? company.supervisors : [];
+      
+      if (company.supervisorName && supervisorsArray.length > 0) {
+        // Try to find supervisor matching the company's supervisorName
+        primarySupervisor = supervisorsArray.find(s => 
+          s.name && s.name.toLowerCase() === company.supervisorName.toLowerCase()
+        );
+      }
+      
+      // If no match by name, use the first supervisor
+      if (!primarySupervisor && supervisorsArray.length > 0) {
+        primarySupervisor = supervisorsArray[0];
       }
 
       return res.json({
@@ -925,6 +973,21 @@ exports.me = async (req, res, next) => {
         role: 'company',
         name: company.name,
         supervisorName: company.supervisorName,
+        primary_supervisor: primarySupervisor ? {
+          id: primarySupervisor.id,
+          name: primarySupervisor.name,
+          email: primarySupervisor.email,
+          phone: primarySupervisor.phone,
+          is_active: primarySupervisor.is_active,
+        } : null,
+        supervisors: supervisorsArray.map(s => ({
+          id: s.id,
+          name: s.name,
+          email: s.email,
+          phone: s.phone,
+          is_active: s.is_active,
+          is_primary: primarySupervisor && primarySupervisor.id === s.id, // Mark if primary
+        })),
         address: company.address,
         natureOfBusiness: company.natureOfBusiness,
         moaStart: company.moaStart,
