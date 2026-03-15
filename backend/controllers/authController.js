@@ -741,10 +741,10 @@ exports.updateInternStatus = async (req, res, next) => {
 ========================= */
 exports.assignHTE = async (req, res, next) => {
   try {
-    const { companyId, position, supervisorName, supervisorEmail } = req.body;
+    const { companyId, position, supervisorName } = req.body;
 
-    if (!companyId || !supervisorName || !supervisorEmail) {
-      return res.status(400).json({ message: 'Missing required fields: companyId, supervisorName, and supervisorEmail are required' });
+    if (!companyId || !supervisorName) {
+      return res.status(400).json({ message: 'Missing required fields: companyId and supervisorName are required' });
     }
 
     const intern = await Intern.findByPk(req.params.id);
@@ -752,40 +752,40 @@ exports.assignHTE = async (req, res, next) => {
       return res.status(404).json({ message: 'Intern not found' });
     }
 
-    // Find or create supervisor
+    // ✅ STEP 1: Fetch company to get its email
+    const company = await Company.findByPk(companyId);
+    if (!company) {
+      return res.status(404).json({ message: 'Company not found' });
+    }
+
+    // ✅ STEP 2: Use company email for all supervisors
+    const supervisorEmail = company.email;
+
+    // ✅ STEP 3: Find or create supervisor with name + company (email is same for all supervisors in company)
     const Supervisor = require('../models').Supervisor;
-    
-    // ✅ STEP 1: Look for exact match (name + email + company)
-    // Each supervisor is unique by name+email+company combination
     let supervisor = await Supervisor.findOne({
       where: {
         name: supervisorName,
-        email: supervisorEmail,
         company_id: companyId,
       },
     });
     
-    // ✅ STEP 2: If not found exactly, CREATE NEW SUPERVISOR
-    // This allows multiple supervisors per company with different emails/names
+    // ✅ STEP 4: If not found, CREATE NEW SUPERVISOR
+    // Each supervisor in a company has unique name but shares company email
     if (!supervisor) {
       try {
         supervisor = await Supervisor.create({
           name: supervisorName,
-          email: supervisorEmail,
+          email: supervisorEmail, // ✅ Auto-use company email
           company_id: companyId,
         });
-        console.log(`[assignHTE] ✅ Created new supervisor: "${supervisorName}" (${supervisorEmail}) for company ${companyId}`);
+        console.log(`[assignHTE] ✅ Created new supervisor: "${supervisorName}" for company ${companyId} with email ${supervisorEmail}`);
       } catch (err) {
-        // If email already exists globally (in different company), suggest different email
-        if (err.name === 'SequelizeUniqueConstraintError' && err.fields?.email) {
-          console.error(`[assignHTE] ❌ Email ${supervisorEmail} already exists globally`);
-          throw new Error(`Supervisor email "${supervisorEmail}" already exists in the system. Please use a different email.`);
-        } else {
-          throw err;
-        }
+        console.error(`[assignHTE] ❌ Error creating supervisor:`, err.message);
+        throw new Error(`Failed to create supervisor "${supervisorName}": ${err.message}`);
       }
     } else {
-      console.log(`[assignHTE] ✅ Reused existing supervisor: "${supervisorName}" (${supervisorEmail}) for company ${companyId}`);
+      console.log(`[assignHTE] ✅ Reused existing supervisor: "${supervisorName}" for company ${companyId}`);
     }
 
     intern.company_id = companyId;

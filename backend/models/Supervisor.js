@@ -14,7 +14,8 @@ module.exports = (sequelize, DataTypes) => {
       email: {
         type: DataTypes.STRING(255),
         allowNull: false,
-        unique: true,
+        // ✅ REMOVED global unique constraint
+        // Multiple supervisors per company can share company email
       },
       phone: {
         type: DataTypes.STRING(20),
