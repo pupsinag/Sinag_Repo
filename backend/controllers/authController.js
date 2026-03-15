@@ -757,6 +757,7 @@ exports.assignHTE = async (req, res, next) => {
     let supervisor = await Supervisor.findOne({
       where: {
         name: supervisorName,
+        email: supervisorEmail,
         company_id: companyId,
       },
     });
@@ -768,13 +769,23 @@ exports.assignHTE = async (req, res, next) => {
           company_id: companyId,
         });
       } catch (err) {
-        // If email already exists, find the supervisor by email and use that
+        // If email already exists, find the supervisor by email and update name if needed
         if (err.name === 'SequelizeUniqueConstraintError' && err.fields?.email) {
           supervisor = await Supervisor.findOne({
             where: { email: supervisorEmail },
           });
           if (!supervisor) {
             throw new Error('Supervisor with this email already exists but cannot be found');
+          }
+          // ✅ UPDATE SUPERVISOR NAME if it has changed
+          if (supervisor.name !== supervisorName) {
+            await supervisor.update({ name: supervisorName });
+            console.log(`[assignHTE] Updated supervisor name from "${supervisor.name}" to "${supervisorName}"`);
+          }
+          // ✅ UPDATE COMPANY if it has changed
+          if (supervisor.company_id !== parseInt(companyId)) {
+            await supervisor.update({ company_id: companyId });
+            console.log(`[assignHTE] Updated supervisor company_id to ${companyId}`);
           }
         } else {
           throw err;
