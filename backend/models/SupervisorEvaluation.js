@@ -15,21 +15,27 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER.UNSIGNED,
         allowNull: false,
       },
-      company_id: {
-        type: DataTypes.INTEGER.UNSIGNED,
+      evaluation_date: {
+        type: DataTypes.DATEONLY,
         allowNull: false,
       },
-      academic_year: {
-        type: DataTypes.STRING,
+      overall_rating: {
+        type: DataTypes.DECIMAL(5, 2),
         allowNull: false,
+        defaultValue: 0,
       },
-      semester: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-      user_id: {
-        type: DataTypes.INTEGER,
+      comments: {
+        type: DataTypes.TEXT,
         allowNull: true,
+      },
+      remarks: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      submitted: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
       },
     },
     {
@@ -40,7 +46,7 @@ module.exports = (sequelize, DataTypes) => {
       indexes: [
         {
           unique: true,
-          fields: ['intern_id', 'supervisor_id', 'academic_year', 'semester'],
+          fields: ['intern_id', 'supervisor_id', 'evaluation_date'],
           name: 'uniq_supervisor_eval',
         },
         {
