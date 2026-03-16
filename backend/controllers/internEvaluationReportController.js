@@ -85,6 +85,49 @@ exports.generateInternEvaluationReport = async (req, res) => {
     });
     console.log(`[generateInternEvaluationReport] Step 1: Found ${baseInterns.length} base interns (hasUserId=${hasUserIdColumn})`);
 
+    // ✅ DEBUG: If no interns found, provide detailed error info
+    if (baseInterns.length === 0) {
+      console.warn('[generateInternEvaluationReport] ⚠️ No interns found with the specified criteria');
+      
+      // Check what interns exist in database for debugging
+      const allInternsInDb = await Intern.findAll({
+        attributes: ['id', 'program', 'year_section'],
+        limit: 10,
+        raw: true,
+      });
+      
+      const allInternsWithProgram = await Intern.findAll({
+        attributes: ['id', 'program', 'year_section'],
+        where: { program: sequelize.where(sequelize.fn('LOWER', sequelize.col('program')), Op.like, `%${program.toLowerCase()}%`) },
+        raw: true,
+      });
+      
+      console.log('[generateInternEvaluationReport] DEBUG - Sample interns in DB:', JSON.stringify(allInternsInDb, null, 2));
+      console.log(`[generateInternEvaluationReport] DEBUG - Interns matching "${program}" (case-insensitive):`, JSON.stringify(allInternsWithProgram, null, 2));
+      
+      const allEvals = await SupervisorEvaluation.findAll({
+        attributes: ['id', 'intern_id'],
+        limit: 5,
+        raw: true,
+      });
+      console.log('[generateInternEvaluationReport] DEBUG - Sample supervisor evaluations:', JSON.stringify(allEvals, null, 2));
+      
+      // Return error response with debugging info
+      return res.status(400).json({
+        message: 'No interns found for report',
+        requestedProgram: program,
+        requestedYearSection: year_section,
+        debugInfo: {
+          internCountInDatabase: await Intern.count(),
+          internsWithApproximateMatch: allInternsWithProgram.length,
+          supervisorEvaluationsCount: await SupervisorEvaluation.count(),
+          hint: allInternsInDb.length > 0 
+            ? `Check if program name matches. Available programs: ${[...new Set(allInternsInDb.map(i => i.program))].join(', ')}`
+            : 'No interns exist in database'
+        }
+      });
+    }
+
     let userMap = {};
     if (baseInterns.length > 0 && hasUserIdColumn) {
       // Step 2: Get User data (only if interns.user_id exists)
@@ -156,6 +199,20 @@ exports.generateInternEvaluationReport = async (req, res) => {
       }
       
       console.log(`[generateInternEvaluationReport] Fetched ${supervisorEvalItems.length} supervisor eval items for ${supervisorEvalIds.length} evaluations`);
+      
+      // ✅ DEBUG: Log if no evaluations found
+      if (supervisorEvalIds.length === 0) {
+        console.warn('[generateInternEvaluationReport] ⚠️ No supervisor evaluations found for these interns');
+        console.log('[generateInternEvaluationReport] DEBUG - Attempting to show data diagnostics:');
+        const internEvalCount = await Intern.count({ where: { id: internIds } });
+        const allSupEvals = await SupervisorEvaluation.findAll({
+          attributes: ['id', 'intern_id'],
+          limit: 5,
+          raw: true,
+        });
+        console.log(`[generateInternEvaluationReport] Found ${internEvalCount} interns, but 0 supervisor evaluations`);
+        console.log('[generateInternEvaluationReport] Sample supervisor evaluations in database:', JSON.stringify(allSupEvals, null, 2));
+      }
       
       // Normalize supervisor evaluation items - preserve section info for CHARACTER vs COMPETENCE
       const normalizedSupervisorEvalItems = supervisorEvalItems.map(item => ({
