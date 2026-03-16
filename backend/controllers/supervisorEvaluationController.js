@@ -236,7 +236,7 @@ exports.submitEvaluation = async (req, res, next) => {
 
       logStep('Bulk creating supervisor evaluation items');
       const itemsToCreate = finalData.items.map((item) => ({
-        evaluation_id: evaluation.id,
+        evaluationId: evaluation.id,
         section: item.section || 'Supervisor',
         indicator: item.indicator,
         rating: Number(item.rating) || 0,
@@ -251,12 +251,21 @@ exports.submitEvaluation = async (req, res, next) => {
           validate: true,
         });
         logStep('Items created successfully');
+        console.log('[SUPERVISOR_EVAL_CONTROLLER] ✅ All items created successfully');
       } catch (itemError) {
-        // If SupervisorEvaluationItem table doesn't exist or has different schema,
-        // log warning but continue - don't fail the entire evaluation
-        console.warn('[SUPERVISOR_EVAL_CONTROLLER] ⚠️ Could not save evaluation items:', itemError.message);
-        console.log('[SUPERVISOR_EVAL_CONTROLLER] Continuing without items - main evaluation already created');
-        logStep('Items creation skipped (table/schema issue) - evaluation data saved');
+        // Log detailed error info for debugging
+        console.error('[SUPERVISOR_EVAL_CONTROLLER] ❌ Error creating evaluation items:');
+        console.error('[SUPERVISOR_EVAL_CONTROLLER] Error message:', itemError.message);
+        console.error('[SUPERVISOR_EVAL_CONTROLLER] Error stack:', itemError.stack);
+        if (itemError.errors) {
+          console.error('[SUPERVISOR_EVAL_CONTROLLER] Validation errors:', JSON.stringify(itemError.errors, null, 2));
+        }
+        // Log the data that failed
+        console.error('[SUPERVISOR_EVAL_CONTROLLER] Failed to create items:', JSON.stringify(itemsToCreate, null, 2));
+        
+        // Continue without items - don't fail the entire evaluation
+        console.warn('[SUPERVISOR_EVAL_CONTROLLER] ⚠️ Continuing without items - main evaluation already created');
+        logStep('Items creation skipped (check logs for details) - evaluation data saved');
       }
 
       await transaction.commit();
