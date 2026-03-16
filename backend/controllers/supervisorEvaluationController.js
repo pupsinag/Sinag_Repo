@@ -78,7 +78,7 @@ exports.submitEvaluation = async (req, res, next) => {
   console.log('[SUPERVISOR_EVAL_CONTROLLER] >>> ENTERED submitEvaluation');
   console.log('[SUPERVISOR_EVAL_CONTROLLER] Received POST /api/supervisor-evaluations');
   console.log('[SUPERVISOR_EVAL_CONTROLLER] req.user:', req.user);
-  console.log('[SUPERVISOR_EVAL_CONTROLLER] req.body:', req.body);
+  console.log('[SUPERVISOR_EVAL_CONTROLLER] req.body (RAW):', req.body);
   let step = 0;
   const logStep = (msg) => {
     step++;
@@ -95,6 +95,40 @@ exports.submitEvaluation = async (req, res, next) => {
 
   let transaction;
   try {
+    // ✅ NORMALIZE ACADEMIC_YEAR: Convert number to string format
+    let { academic_year, semester } = req.body;
+    
+    if (typeof academic_year === 'number') {
+      // Convert 2026 → "2025-2026"
+      academic_year = `${academic_year - 1}-${academic_year}`;
+      console.log('[SUPERVISOR_EVAL_CONTROLLER] ✅ Converted numeric academic_year to:', academic_year);
+    }
+    
+    // ✅ NORMALIZE SEMESTER: Convert "First"/"Second" → "1st Semester"/"2nd Semester"
+    const semesterMap = {
+      'first': '1st Semester',
+      'second': '2nd Semester',
+      'third': '3rd Semester',
+      'summer': 'Summer',
+      '1': '1st Semester',
+      '2': '2nd Semester',
+    };
+    
+    const normalizedSemester = semesterMap[semester?.toLowerCase()] || semester;
+    if (normalizedSemester !== semester) {
+      console.log('[SUPERVISOR_EVAL_CONTROLLER] ✅ Converted semester from:', semester, '→ to:', normalizedSemester);
+      semester = normalizedSemester;
+    }
+    
+    // Override req.body with normalized values
+    req.body.academic_year = academic_year;
+    req.body.semester = semester;
+    
+    console.log('[SUPERVISOR_EVAL_CONTROLLER] req.body (NORMALIZED):', {
+      ...req.body,
+      items: `[${req.body.items?.length || 0} items]`
+    });
+
     logStep('Checking if supervisor evaluations are active');
     const isActive = evaluationSettingsService.isEvaluationActive('supervisor');
     logStep('Supervisor evaluation active: ' + isActive);
