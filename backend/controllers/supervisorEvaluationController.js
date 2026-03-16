@@ -99,11 +99,11 @@ exports.submitEvaluation = async (req, res, next) => {
     
     // If frontend sends old format fields (academic_year, semester, etc), convert them
     let finalData = {
+      ...req.body, // Start with all frontend data
       evaluation_date: evaluation_date || new Date().toISOString().split('T')[0],
-      overall_rating: overall_rating || 0,
+      overall_rating: overall_rating !== undefined ? overall_rating : 0,
       comments: comments || '',
       remarks: remarks || '',
-      ...req.body
     };
     
     console.log('[SUPERVISOR_EVAL_CONTROLLER] req.body (NORMALIZED):', {
