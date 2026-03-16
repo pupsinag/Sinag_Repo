@@ -94,9 +94,24 @@ exports.submitEvaluation = async (req, res, next) => {
 
   let transaction;
   try {
+    // ✅ MAP FRONTEND FORMAT TO DATABASE FORMAT
+    const { evaluation_date, overall_rating, comments, remarks, ...frontendData } = req.body;
+    
+    // If frontend sends old format fields (academic_year, semester, etc), convert them
+    let finalData = {
+      evaluation_date: evaluation_date || new Date().toISOString().split('T')[0],
+      overall_rating: overall_rating || 0,
+      comments: comments || '',
+      remarks: remarks || '',
+      ...req.body
+    };
+    
     console.log('[SUPERVISOR_EVAL_CONTROLLER] req.body (NORMALIZED):', {
-      ...req.body,
-      items: `[${req.body.items?.length || 0} items]`
+      intern_id: finalData.intern_id,
+      supervisor_id: finalData.supervisor_id,
+      evaluation_date: finalData.evaluation_date,
+      overall_rating: finalData.overall_rating,
+      items: `[${finalData.items?.length || 0} items]`
     });
 
     logStep('Checking if supervisor evaluations are active');
@@ -111,36 +126,31 @@ exports.submitEvaluation = async (req, res, next) => {
     }
 
     // Entry log only
-    console.log(`[EVAL] Submission started for intern ${req.body.intern_id}`);
+    console.log(`[EVAL] Submission started for intern ${finalData.intern_id}`);
 
     // Validate input
-    const missingFields = validateFields(req.body);
+    const missingFields = validateFields(finalData);
     if (missingFields.length > 0) {
       console.error('[VALIDATION] Missing required fields:', missingFields);
       return res.status(400).json({ 
         message: 'Missing required fields for supervisor evaluation', 
         missingFields,
         hint: 'Required fields: intern_id, supervisor_id, evaluation_date, overall_rating, items (non-empty array)',
-        expectedFormat: {
-          intern_id: 1,
-          supervisor_id: 15,
-          evaluation_date: '2026-03-16',
-          overall_rating: 85.5,
-          comments: 'optional comments',
-          remarks: 'optional remarks',
-          items: [
-            { section: 'Character', indicator: '...', rating: 8 },
-            { section: 'Competence', indicator: '...', rating: 7 }
-          ]
+        receivedData: {
+          intern_id: finalData.intern_id,
+          supervisor_id: finalData.supervisor_id,
+          evaluation_date: finalData.evaluation_date,
+          overall_rating: finalData.overall_rating,
+          itemsCount: finalData.items?.length || 0
         }
       });
     }
-    if (req.body.items.length > 100) {
-      console.error('[VALIDATION] Too many items:', req.body.items.length);
+    if (finalData.items.length > 100) {
+      console.error('[VALIDATION] Too many items:', finalData.items.length);
       return res.status(400).json({ message: 'Too many items (max 100)' });
     }
     // NEW: Validate items structure with detailed error info
-    const invalidItems = validateItems(req.body.items);
+    const invalidItems = validateItems(finalData.items);
     if (invalidItems.length > 0) {
       console.error('[VALIDATION] Invalid items found:', invalidItems);
       return res.status(400).json({ 
@@ -162,17 +172,17 @@ exports.submitEvaluation = async (req, res, next) => {
       logStep('Checking for existing evaluation');
       
       // ✅ Calculate overall_rating from items array
-      let overallRating = req.body.overall_rating;
-      if (!overallRating && req.body.items && Array.isArray(req.body.items)) {
-        overallRating = req.body.items.reduce((sum, item) => sum + (item.rating || 0), 0) / req.body.items.length;
+      let overallRating = finalData.overall_rating;
+      if (!overallRating && finalData.items && Array.isArray(finalData.items)) {
+        overallRating = finalData.items.reduce((sum, item) => sum + (item.rating || 0), 0) / finalData.items.length;
         console.log('[SUPERVISOR_EVAL_CONTROLLER] ✅ Calculated overallRating from items:', overallRating);
       }
       
       // ✅ Check for duplicates: same intern + supervisor on same date (simple check)
       const existingEvaluation = await SupervisorEvaluation.findOne({
         where: {
-          intern_id: req.body.intern_id,
-          supervisor_id: req.body.supervisor_id,
+          intern_id: finalData.intern_id,
+          supervisor_id: finalData.supervisor_id,
         },
         order: [['createdAt', 'DESC']],
         limit: 1,
@@ -181,7 +191,7 @@ exports.submitEvaluation = async (req, res, next) => {
       });
       
       // Only reject if same evaluation on same date
-      if (existingEvaluation && existingEvaluation.evaluation_date === req.body.evaluation_date) {
+      if (existingEvaluation && existingEvaluation.evaluation_date === finalData.evaluation_date) {
         await transaction.rollback();
         console.warn('[SUPERVISOR_EVAL_CONTROLLER] ⚠️ Evaluation already exists for this date');
         return res.status(409).json({
@@ -195,12 +205,12 @@ exports.submitEvaluation = async (req, res, next) => {
       logStep('Creating supervisor evaluation');
       const evaluation = await SupervisorEvaluation.create(
         {
-          intern_id: req.body.intern_id,
-          supervisor_id: req.body.supervisor_id,
-          evaluation_date: req.body.evaluation_date,
-          overall_rating: overallRating || 0,
-          comments: req.body.comments || '',
-          remarks: req.body.remarks || '',
+          intern_id: finalData.intern_id,
+          supervisor_id: finalData.supervisor_id,
+          evaluation_date: finalData.evaluation_date,
+          overall_rating: overallRating || finalData.overall_rating || 0,
+          comments: finalData.comments || '',
+          remarks: finalData.remarks || '',
           submitted: true,
         },
         { transaction },
@@ -208,7 +218,7 @@ exports.submitEvaluation = async (req, res, next) => {
       logStep('Evaluation created with ID: ' + evaluation.id);
 
       logStep('Bulk creating supervisor evaluation items');
-      const itemsToCreate = req.body.items.map((item) => ({
+      const itemsToCreate = finalData.items.map((item) => ({
         evaluation_id: evaluation.id,
         section: item.section || 'Supervisor',
         indicator: item.indicator,
