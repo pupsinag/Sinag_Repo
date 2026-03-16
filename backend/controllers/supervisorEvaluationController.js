@@ -251,21 +251,17 @@ exports.submitEvaluation = async (req, res, next) => {
           validate: true,
         });
         logStep('Items created successfully');
-        console.log('[SUPERVISOR_EVAL_CONTROLLER] ✅ All items created successfully');
+        console.log('[SUPERVISOR_EVAL_CONTROLLER] ✅ All evaluation items saved to database');
       } catch (itemError) {
-        // Log detailed error info for debugging
+        // Log detailed error for debugging
         console.error('[SUPERVISOR_EVAL_CONTROLLER] ❌ Error creating evaluation items:');
         console.error('[SUPERVISOR_EVAL_CONTROLLER] Error message:', itemError.message);
-        console.error('[SUPERVISOR_EVAL_CONTROLLER] Error stack:', itemError.stack);
+        console.error('[SUPERVISOR_EVAL_CONTROLLER] Error name:', itemError.name);
         if (itemError.errors) {
           console.error('[SUPERVISOR_EVAL_CONTROLLER] Validation errors:', JSON.stringify(itemError.errors, null, 2));
         }
-        // Log the data that failed
-        console.error('[SUPERVISOR_EVAL_CONTROLLER] Failed to create items:', JSON.stringify(itemsToCreate, null, 2));
-        
-        // Continue without items - don't fail the entire evaluation
         console.warn('[SUPERVISOR_EVAL_CONTROLLER] ⚠️ Continuing without items - main evaluation already created');
-        logStep('Items creation skipped (check logs for details) - evaluation data saved');
+        logStep('Items creation skipped - check logs for details');
       }
 
       await transaction.commit();
