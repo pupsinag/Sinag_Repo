@@ -21,10 +21,10 @@ function getEvaluationSettings() {
 // Helper: Validate required fields
 function validateFields(body) {
   const missing = [];
-  if (!body.intern_id) missing.push('intern_id');
-  if (!body.supervisor_id) missing.push('supervisor_id');
+  if (body.intern_id === undefined || body.intern_id === null || body.intern_id === '') missing.push('intern_id');
+  if (body.supervisor_id === undefined || body.supervisor_id === null || body.supervisor_id === '') missing.push('supervisor_id');
   if (!body.evaluation_date) missing.push('evaluation_date');
-  if (typeof body.overall_rating !== 'number') missing.push('overall_rating (must be a number)');
+  if (body.overall_rating === undefined || body.overall_rating === null || typeof body.overall_rating !== 'number') missing.push('overall_rating (must be a number)');
   if (!body.items || !Array.isArray(body.items) || body.items.length === 0) missing.push('items (non-empty array)');
   return missing;
 }
@@ -128,20 +128,29 @@ exports.submitEvaluation = async (req, res, next) => {
     // Entry log only
     console.log(`[EVAL] Submission started for intern ${finalData.intern_id}`);
 
-    // Validate input
+    // Validate input with detailed error logging
     const missingFields = validateFields(finalData);
     if (missingFields.length > 0) {
-      console.error('[VALIDATION] Missing required fields:', missingFields);
+      console.error('[VALIDATION] ❌ Missing required fields:', missingFields);
+      console.error('[VALIDATION] DEBUG - Full finalData:', JSON.stringify({
+        intern_id: { value: finalData.intern_id, type: typeof finalData.intern_id },
+        supervisor_id: { value: finalData.supervisor_id, type: typeof finalData.supervisor_id },
+        evaluation_date: { value: finalData.evaluation_date, type: typeof finalData.evaluation_date },
+        overall_rating: { value: finalData.overall_rating, type: typeof finalData.overall_rating },
+        items: { count: finalData.items?.length || 0, type: Array.isArray(finalData.items) ? 'array' : typeof finalData.items },
+      }, null, 2));
       return res.status(400).json({ 
         message: 'Missing required fields for supervisor evaluation', 
         missingFields,
-        hint: 'Required fields: intern_id, supervisor_id, evaluation_date, overall_rating, items (non-empty array)',
+        error_details: 'Check backend logs for full data dump',
+        hint: 'Required fields: intern_id (number), supervisor_id (number), evaluation_date (string YYYY-MM-DD), overall_rating (number), items (non-empty array)',
         receivedData: {
-          intern_id: finalData.intern_id,
-          supervisor_id: finalData.supervisor_id,
-          evaluation_date: finalData.evaluation_date,
-          overall_rating: finalData.overall_rating,
-          itemsCount: finalData.items?.length || 0
+          intern_id: { value: finalData.intern_id, type: typeof finalData.intern_id },
+          supervisor_id: { value: finalData.supervisor_id, type: typeof finalData.supervisor_id },
+          evaluation_date: { value: finalData.evaluation_date, type: typeof finalData.evaluation_date },
+          overall_rating: { value: finalData.overall_rating, type: typeof finalData.overall_rating },
+          itemsCount: finalData.items?.length || 0,
+          itemsType: Array.isArray(finalData.items) ? 'array' : typeof finalData.items
         }
       });
     }
@@ -152,14 +161,22 @@ exports.submitEvaluation = async (req, res, next) => {
     // NEW: Validate items structure with detailed error info
     const invalidItems = validateItems(finalData.items);
     if (invalidItems.length > 0) {
-      console.error('[VALIDATION] Invalid items found:', invalidItems);
+      console.error('[VALIDATION] ❌ Invalid items found:', JSON.stringify(invalidItems, null, 2));
       return res.status(400).json({ 
         message: 'Invalid item structure in evaluation items', 
-        detailedErrors: invalidItems,
+        itemsValidationErrors: invalidItems.map(result => ({
+          itemIndex: result.index,
+          errors: result.errors,
+          receivedItem: {
+            section: result.item.section,
+            indicator: result.item.indicator,
+            rating: { value: result.item.rating, type: typeof result.item.rating }
+          }
+        })),
         validItemExample: {
-          section: 'Technical Skills',
-          indicator: 'Problem Solving Ability',
-          rating: 4
+          section: 'Character',
+          indicator: 'The intern can be trusted...',
+          rating: 5  // number, not string
         }
       });
     }
