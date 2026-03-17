@@ -212,7 +212,7 @@ exports.submitEvaluation = async (req, res, next) => {
         await transaction.rollback();
         console.warn('[SUPERVISOR_EVAL_CONTROLLER] ⚠️ Evaluation already exists for this date');
         return res.status(409).json({
-          message: 'Evaluation already submitted for this intern on this date',
+          message: 'This intern has already been evaluated on this date',
           evaluationId: existingEvaluation.id,
         });
       }
